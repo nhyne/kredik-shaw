@@ -2,6 +2,7 @@ import zhttp.http._
 import zhttp.service.Server
 import zio._
 import zio.json._
+import zio.magic._
 
 import java.util.UUID
 import scala.collection.mutable
@@ -32,15 +33,43 @@ object Messenger extends App {
 
   val katherine = Person("katherine")
 
-  val app: Http[UserService.Service, HttpError, Request, Response] =
-    Http.collect[Request] {
-      case Method.GET -> Root / "json" =>
-        Response.jsonString(katherine.toJson)
-    }
+  def doAPutUser(): ZIO[UserService.Service, HttpError, Response] =
+    for {
+      a <-
+        RIO
+          .accessM[UserService.Service](
+            _.insertUser(
+              NewUser(
+                firstName = "adam",
+                lastName = "johnson",
+                email = "email",
+                phoneNumber = "3456789"
+              )
+            )
+          )
+          .bimap(
+            _ => HttpError.NotImplemented("whooop error!"),
+            user => Response.text(s"$user")
+          )
+    } yield a
+
+  val app: Http[Any, HttpError, Request, Response] = {
+    val server: Http[Any, HttpError, Request, Response] =
+      Http.collectM[Request] {
+        case Method.GET -> Root / "json" =>
+          UIO(Response.jsonString(katherine.toJson))
+        case Method.GET -> Root / "zio" =>
+          doAPutUser().provideMagicLayer(UserService.dummy)
+      }
+    server
+  }
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
     val userService = UserService.dummy
-    Server.start(8090, app.silent).exitCode.provideCustomLayer(userService)
+    Server
+      .start(8090, app.silent)
+//      .provideMagicLayer(zio.console.Console.live)
+      .exitCode
   }
 }
 
@@ -52,9 +81,10 @@ object UserService {
 
   type UserService = Has[Service]
 
-  val dummy: ZLayer[Any, Throwable, UserService] = DummyUserService()
+  val dummy: ZLayer[Any, Nothing, Has[Service]] =
+    ZIO.succeed(DummyUserService()).toLayer
 
-  object DummyUserService extends UserService.Service {
+  final case class DummyUserService() extends UserService.Service {
     val userMap: mutable.HashMap[UUID, User] = mutable.HashMap.empty
 
     override def getUserById(id: UUID) = ZIO.fromOption(userMap.get(id))
