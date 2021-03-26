@@ -33,12 +33,10 @@ object Messenger extends App {
 
   val katherine = Person("katherine")
 
-  def doAPutUser(): ZIO[UserService.Service, HttpError, Response] =
+  def doAPutUser(): ZIO[UserService.UserService, HttpError, Response] =
     for {
-      a <-
-        RIO
-          .accessM[UserService.Service](
-            _.insertUser(
+      a <- RIO.accessM[UserService.UserService](
+            _.get.insertUser(
               NewUser(
                 firstName = "adam",
                 lastName = "johnson",
@@ -53,23 +51,19 @@ object Messenger extends App {
           )
     } yield a
 
-  val app: Http[Any, HttpError, Request, Response] = {
-    val server: Http[Any, HttpError, Request, Response] =
-      Http.collectM[Request] {
-        case Method.GET -> Root / "json" =>
-          UIO(Response.jsonString(katherine.toJson))
-        case Method.GET -> Root / "zio" =>
-          doAPutUser().provideMagicLayer(UserService.dummy)
-      }
-    server
+  val app = Http.collectM[Request] {
+    case Method.GET -> Root / "json" =>
+      UIO(Response.jsonString(katherine.toJson))
+    case Method.GET -> Root / "zio" =>
+      doAPutUser()
   }
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
     val userService = UserService.dummy
     Server
       .start(8090, app.silent)
-//      .provideMagicLayer(zio.console.Console.live)
       .exitCode
+      .injectSome(UserService.dummy)
   }
 }
 
