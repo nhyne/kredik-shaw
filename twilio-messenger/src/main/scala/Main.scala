@@ -1,4 +1,6 @@
+import UserService.UserService
 import zhttp.http._
+import zhttp.service._
 import zhttp.service.Server
 import zio._
 import zio.json._
@@ -21,6 +23,11 @@ case class NewUser(
   phoneNumber: String
 )
 
+object User {
+  implicit val decoder: JsonDecoder[User] = DeriveJsonDecoder.gen[User]
+  implicit val formatter: JsonEncoder[User] = DeriveJsonEncoder.gen[User]
+}
+
 case class User(
   firstName: String,
   lastName: String,
@@ -35,7 +42,9 @@ object Messenger extends App {
 
   def doAPutUser(): ZIO[UserService.UserService, HttpError, Response] =
     for {
-      a <- RIO.accessM[UserService.UserService](
+      a <-
+        RIO
+          .accessM[UserService.UserService](
             _.get.insertUser(
               NewUser(
                 firstName = "adam",
@@ -51,20 +60,38 @@ object Messenger extends App {
           )
     } yield a
 
-  val app = Http.collectM[Request] {
-    case Method.GET -> Root / "json" =>
-      UIO(Response.jsonString(katherine.toJson))
-    case Method.GET -> Root / "zio" =>
-      doAPutUser()
-  }
+  def doAGetUser(
+    userId: String
+  ): ZIO[UserService.UserService, HttpError, Response] =
+    for {
+      userUUID <-
+        ZIO
+          .fromTry(scala.util.Try(UUID.fromString(userId)))
+          .mapError(_ => HttpError.InternalServerError("bboooo"))
+      user <-
+        RIO
+          .accessM[UserService.UserService](_.get.getUserById(userUUID))
+          .bimap(
+            _ => HttpError.InternalServerError("boo"),
+            user => Response.jsonString(user.toJson)
+          )
+    } yield user
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
-    val userService = UserService.dummy
+  val app: Http[UserService, HttpError, Request, Response] =
+    Http.collectM[Request] {
+      case Method.GET -> Root / "json" =>
+        UIO(Response.jsonString(katherine.toJson))
+      case Method.GET -> Root / "zio" =>
+        doAPutUser()
+      case Method.GET -> Root / "users" / userId =>
+        doAGetUser(userId)
+    }
+
+  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] =
     Server
       .start(8090, app.silent)
       .exitCode
       .injectSome(UserService.dummy)
-  }
 }
 
 object UserService {
