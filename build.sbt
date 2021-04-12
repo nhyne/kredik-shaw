@@ -26,7 +26,7 @@ lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
         "dev.zio" %% "zio-json" % "0.1.2",
         "dev.zio" %% "zio-metrics" % "1.0.5",
         "io.github.kitlangton" %% "zio-magic" % "0.2.2",
-        "io.d11" %% "zhttp" % "1.0.0.0-RC13",
+        "io.d11" %% "zhttp" % "1.0.0.0-RC15",
         "com.github.pureconfig" %% "pureconfig" % "0.14.1",
         "com.softwaremill.sttp.client3" %% "core" % sttpClientVersion,
         "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % sttpClientVersion
