@@ -40,7 +40,7 @@ object Messenger extends App {
 
   val katherine = Person("katherine")
 
-  def doAPutUser(): ZIO[UserService.UserService, HttpError, Response] =
+  def doAPutUser(): ResponseM[UserService.UserService, HttpError] =
     for {
       a <-
         RIO
@@ -62,7 +62,8 @@ object Messenger extends App {
 
   def doAGetUser(
     userId: String
-  ): ZIO[UserService.UserService, HttpError, Response] =
+                ): ResponseM[UserService.UserService, HttpError] =
+//  ): ZIO[UserService.UserService, HttpError, Response] =
     for {
       userUUID <-
         ZIO
@@ -77,8 +78,8 @@ object Messenger extends App {
           )
     } yield user
 
-  val app: Http[UserService, HttpError, Request, Response] =
-    Http.collectM[Request] {
+  val app: Http[UserService, Throwable] =
+    Http.collectM {
       case Method.GET -> Root / "json" =>
         UIO(Response.jsonString(katherine.toJson))
       case Method.GET -> Root / "zio" =>

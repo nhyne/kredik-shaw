@@ -1,6 +1,6 @@
-val zioVersion = "1.0.5"
+val zioVersion = "1.0.7"
 val zioConfigVersion = "1.0.0"
-val scala_2_13 = "2.13.4"
+val scala_2_13 = "2.13.5"
 val sttpClientVersion = "3.1.9"
 val tapirVersion = "0.17.19"
 val circeVersion = "0.13.0"
@@ -23,8 +23,9 @@ lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
       Seq(
         "dev.zio" %% "zio" % zioVersion,
         "dev.zio" %% "zio-logging" % "0.5.8",
-        "dev.zio" %% "zio-json" % "0.1.2",
+        "dev.zio" %% "zio-json" % "0.1.4",
         "dev.zio" %% "zio-metrics" % "1.0.5",
+//        "dev.zio" %% "zio-telemetry" % "0.8.0",
         "io.github.kitlangton" %% "zio-magic" % "0.2.2",
         "io.d11" %% "zhttp" % "1.0.0.0-RC15",
         "com.github.pureconfig" %% "pureconfig" % "0.14.1",
