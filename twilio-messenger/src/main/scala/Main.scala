@@ -5,6 +5,7 @@ import zhttp.service.Server
 import zio._
 import zio.json._
 import zio.magic._
+import zio.logging._
 
 import java.util.UUID
 import scala.collection.mutable
@@ -62,13 +63,13 @@ object Messenger extends App {
 
   def doAGetUser(
     userId: String
-                ): ResponseM[UserService.UserService, HttpError] =
-//  ): ZIO[UserService.UserService, HttpError, Response] =
+                ): ResponseM[UserService.UserService with Logging, HttpError] =
     for {
       userUUID <-
         ZIO
           .fromTry(scala.util.Try(UUID.fromString(userId)))
           .mapError(_ => HttpError.InternalServerError("bboooo"))
+      _ <- log.info("coooooooooooooool")
       user <-
         RIO
           .accessM[UserService.UserService](_.get.getUserById(userUUID))
@@ -76,9 +77,10 @@ object Messenger extends App {
             _ => HttpError.InternalServerError("boo"),
             user => Response.jsonString(user.toJson)
           )
+
     } yield user
 
-  val app: Http[UserService, Throwable] =
+  val app: Http[UserService with Logging, Throwable] =
     Http.collectM {
       case Method.GET -> Root / "json" =>
         UIO(Response.jsonString(katherine.toJson))
@@ -88,11 +90,20 @@ object Messenger extends App {
         doAGetUser(userId)
     }
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] =
-    Server
+  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
+    val logLayer = Logging.console(
+      logLevel = LogLevel.Info,
+      format = LogFormat.ColoredLogFormat()
+    ) >>> Logging.withRootLoggerName("my-component")
+
+  Server
       .start(8090, app.silent)
       .exitCode
-      .injectSome(UserService.dummy)
+      .injectSome(
+        UserService.dummy,
+        logLayer
+      )
+  }
 }
 
 object UserService {
