@@ -63,7 +63,7 @@ object Messenger extends App {
 
   def doAGetUser(
     userId: String
-                ): ResponseM[UserService.UserService with Logging, HttpError] =
+  ): ResponseM[UserService.UserService with Logging, HttpError] =
     for {
       userUUID <-
         ZIO
@@ -96,7 +96,7 @@ object Messenger extends App {
       format = LogFormat.ColoredLogFormat()
     ) >>> Logging.withRootLoggerName("my-component")
 
-  Server
+    Server
       .start(8090, app.silent)
       .exitCode
       .injectSome(
