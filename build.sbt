@@ -1,6 +1,6 @@
 val zioVersion = "1.0.7"
 val zioConfigVersion = "1.0.0"
-val scala_2_13 = "2.13.5"
+val scala_2_13 = "2.13.6"
 val sttpClientVersion = "3.1.9"
 val tapirVersion = "0.17.19"
 val circeVersion = "0.13.0"
@@ -18,7 +18,7 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
     version := "0.0.1-SNAPSHOT",
     organization := "dev.nhyne",
     mainClass in Compile := Some("Main"),
-    scalaVersion := "3.0.0",
+    scalaVersion := scala_2_13,
     libraryDependencies ++=
       Seq(
         "dev.zio" %% "zio" % "1.0.9",
