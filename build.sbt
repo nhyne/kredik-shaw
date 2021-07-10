@@ -9,10 +9,23 @@ lazy val root = (project in file("."))
   .settings(
     skip in publish := true,
     name := "root",
-    run in Compile := (run in Compile in `twilio-messenger`).evaluated
+    run in Compile := (run in Compile in `github-watcher`).evaluated
   )
-  .aggregate(`twilio-messenger`)
+  .aggregate(`twilio-messenger`, `github-watcher`)
 
+lazy val `github-watcher` = (project in file("./github-watcher"))
+  .settings(
+    version := "0.0.1-SNAPSHOT",
+    organization := "dev.nhyne",
+    mainClass in Compile := Some("Main"),
+    scalaVersion := "3.0.0",
+    libraryDependencies ++=
+      Seq(
+        "dev.zio" %% "zio" % "1.0.9",
+        "dev.zio" %% "zio-interop-cats" % "3.1.1.0",
+        "com.47deg" %% "github4s" % "0.29.0"
+      )
+  )
 lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
   .settings(
     version := "0.0.1-SNAPSHOT",
