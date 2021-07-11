@@ -23,8 +23,10 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
       Seq(
         "dev.zio" %% "zio" % "1.0.9",
         "dev.zio" %% "zio-interop-cats" % "3.1.1.0",
-        "com.47deg" %% "github4s" % "0.29.0"
-      )
+        "com.47deg" %% "github4s" % "0.29.0",
+        //"org.http4s" %% "http4s-async-http-client" % "0.23.0-RC1",
+        "org.http4s" %% "http4s-blaze-client" % "0.23.0-RC1"
+)
   )
 lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
   .settings(
