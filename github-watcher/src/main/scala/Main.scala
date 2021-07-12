@@ -7,19 +7,25 @@ import org.http4s.blaze.client.BlazeClientBuilder
 import github4s.{GHResponse, Github}
 import zio.console.Console
 import github4s.domain.Repository
+import org.http4s.Method.GET
+import org.http4s.{Headers, MediaType, Uri}
 import zio.magic._
+import org.http4s.client.dsl.io._
+import org.http4s.headers._
+import org.http4s.implicits._
+import org.http4s._
 
 object Main extends App {
 
   type GithubClientLayer = Has[Github[Task]]
 
-    object Http4sClient {
-      val live: ZLayer[Any, Throwable, Has[Client[Task]]] = {
-        implicit val runtime: Runtime[ZEnv] = Runtime.default
-        val res = BlazeClientBuilder[Task](runtime.platform.executor.asEC).resource.toManagedZIO
-        ZLayer.fromManaged(res)
-      }
+  object Http4sClient {
+    val live: ZLayer[Any, Throwable, Has[Client[Task]]] = {
+      implicit val runtime: Runtime[ZEnv] = Runtime.default
+      val res = BlazeClientBuilder[Task](runtime.platform.executor.asEC).resource.toManagedZIO
+      ZLayer.fromManaged(res)
     }
+  }
 
   object GithubClient {
     def live(accessToken: Option[String]): ZLayer[Has[Client[Task]], Throwable, Has[Github[Task]]] = {
@@ -34,6 +40,30 @@ object Main extends App {
     if (res.statusCode == 200) {
       res.result
     }
+  }
+
+  def getRepoTopics(repo: Repository): ZIO[Console with Has[Client[Task]], Throwable, Response[Task]] = {
+    getRepoTopics(repo.full_name)
+  }
+  private def getRepoTopics(repo: String) = {
+    for {
+      httpClient <- ZIO.service[Client[Task]]
+      rawUri = s"https://api.github.com/repos/$repo/topics"
+      uri <- ZIO.fromEither(Uri.fromString(rawUri))
+      req = Request[Task](
+        uri = uri,
+        headers = Headers(
+          "Accept" -> "application/vnd.github.mercy-preview+json"
+        )
+      )
+      _ <- putStrLn(req.asCurl())
+      res <- httpClient.run(req).toManagedZIO.use { res =>
+        if (res.status.isSuccess) ZIO.succeed(res)
+        else {
+          putStrLn(s"Got ${res.status.code} trying to get $repo topics from $rawUri") *> ZIO.fail(new Throwable(res.status.reason))
+        }
+      }
+    } yield res
   }
 
   def listRepos(): ZIO[GithubClientLayer, Throwable, List[Repository]] = {
