@@ -26,7 +26,10 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "com.47deg" %% "github4s" % "0.29.0",
         "io.github.kitlangton" %% "zio-magic" % "0.3.5",
         //"org.http4s" %% "http4s-async-http-client" % "0.23.0-RC1",
-        "org.http4s" %% "http4s-blaze-client" % "0.23.0-RC1"
+        "org.http4s" %% "http4s-blaze-client" % "0.23.0-RC1",
+        "org.http4s" %% "http4s-circe" % "0.23.0-RC1",
+        "io.circe" %% "circe-generic" % "0.13.0"
+
 )
   )
 lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
