@@ -43,8 +43,8 @@ object Main extends App {
             .header("Accept", "application/vnd.github.mercy-preview+json")
             .response(asJson[Topics])
           response <- client.send(request)
-          _ = println(response)
-        } yield Topics(Seq("Abc"))
+          topics <- ZIO.fromEither(response.body)
+        } yield topics
 
         override def nothing(something: String): ZIO[Console, IOException, Unit] = putStrLn(something)
       }
@@ -82,7 +82,8 @@ object Main extends App {
     repos <- listRepos()
     _ <- ZIO.foreach(repos)(repo => putStrLn(repo.name))
     clt <- ZIO.service[zioHttpClient.Service]
-    a <- clt.getTopics("zio", "zio")
+    zioTopics <- clt.getTopics("zio", "zio")
+    _ <- ZIO.foreach(zioTopics.names)(topic => putStrLn(topic))
   } yield ()
 
 
