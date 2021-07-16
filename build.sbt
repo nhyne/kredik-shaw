@@ -27,10 +27,12 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "io.github.kitlangton" %% "zio-magic" % "0.3.5",
         //"org.http4s" %% "http4s-async-http-client" % "0.23.0-RC1",
         "org.http4s" %% "http4s-blaze-client" % "0.23.0-RC1",
-        "org.http4s" %% "http4s-circe" % "0.23.0-RC1",
-        "io.circe" %% "circe-generic" % "0.13.0"
+        "com.softwaremill.sttp.client3" %% "core" % "3.3.11",
+        "com.softwaremill.sttp.client3" %% "zio-json" % "3.3.11",
+        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % "3.3.11"
 
-)
+
+      )
   )
 lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
   .settings(
