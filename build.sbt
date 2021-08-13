@@ -19,6 +19,9 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
     organization := "dev.nhyne",
     mainClass in Compile := Some("Main"),
     scalaVersion := scala_2_13,
+    scalacOptions ++= Seq(
+      "-Xfatal-warnings",
+    ),
     libraryDependencies ++=
       Seq(
         "dev.zio" %% "zio" % "1.0.9",

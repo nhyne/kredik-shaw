@@ -31,6 +31,33 @@ object Main extends App {
     }
   }
 
+
+  object ActionService {
+    type ActionService = Has[Service]
+
+    val live: ZLayer[Console, Throwable, ActionService] = ZLayer.succeed(
+      new Service {
+        override def performAction(action: TopicAction): ZIO[Console, Throwable, Unit] = action match {
+          case TopicAction.K8sAction(config) => putStrLn("k8s action")
+        }
+      }
+    )
+
+    trait Service {
+      def performAction(action: TopicAction): ZIO[Console, Throwable, Unit]
+    }
+    case class K8sActionConfig(clusterName: String)
+    case class PullRequestEnvironmentConfig(prNumber: Int)
+    case class ArgoConfig(manifestsPath: String)
+
+    sealed trait TopicAction
+    case object TopicAction {
+      case class K8sAction(config: K8sActionConfig) extends TopicAction
+      case class PullRequestEnvironmentAction(config: PullRequestEnvironmentConfig) extends TopicAction
+      case class ArgoSyncAction(config: ArgoConfig)
+    }
+  }
+
   object zioHttpClient {
     implicit val myResponseJsonDecoder: JsonDecoder[Topics] = DeriveJsonDecoder.gen[Topics]
     type SBackend = SttpBackend[Task, ZioStreams with capabilities.WebSockets]
