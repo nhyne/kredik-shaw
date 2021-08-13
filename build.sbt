@@ -20,7 +20,7 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
     mainClass in Compile := Some("Main"),
     scalaVersion := scala_2_13,
     scalacOptions ++= Seq(
-      "-Xfatal-warnings",
+      "-Xfatal-warnings"
     ),
     libraryDependencies ++=
       Seq(
@@ -32,8 +32,8 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "org.http4s" %% "http4s-blaze-client" % "0.23.0-RC1",
         "com.softwaremill.sttp.client3" %% "core" % "3.3.11",
         "com.softwaremill.sttp.client3" %% "zio-json" % "3.3.11",
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % "3.3.11"
-
+        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % "3.3.11",
+        "io.d11" %% "zhttp"      % "1.0.0.0-RC17"
 
       )
   )

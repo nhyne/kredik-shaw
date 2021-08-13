@@ -7,7 +7,9 @@ import org.http4s.blaze.client.BlazeClientBuilder
 import github4s.{GHResponse, Github}
 import zio.console.Console
 import github4s.domain.Repository
-import org.http4s.{Headers, Uri}
+import zhttp.http.{HttpApp => ZHttpApp, Method => ZMethod, Response => ZResponse, Root, /, ->}
+import zhttp.service.{Server => ZServer}
+import zhttp.service.server.ServerChannelFactory
 import sttp.client3.{Response => SResponse, _}
 import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
 import zio.magic._
@@ -39,6 +41,8 @@ object Main extends App {
       new Service {
         override def performAction(action: TopicAction): ZIO[Console, Throwable, Unit] = action match {
           case TopicAction.K8sAction(config) => putStrLn("k8s action")
+          case TopicAction.PullRequestEnvironmentAction(config) => putStrLn("pr actoin")
+          case TopicAction.ArgoSyncAction(config) => putStrLn("argo action")
         }
       }
     )
@@ -54,7 +58,7 @@ object Main extends App {
     case object TopicAction {
       case class K8sAction(config: K8sActionConfig) extends TopicAction
       case class PullRequestEnvironmentAction(config: PullRequestEnvironmentConfig) extends TopicAction
-      case class ArgoSyncAction(config: ArgoConfig)
+      case class ArgoSyncAction(config: ArgoConfig) extends TopicAction
     }
   }
 
@@ -107,12 +111,20 @@ object Main extends App {
 
   val program = for {
     repos <- listRepos()
-    _ <- ZIO.foreach(repos)(repo => putStrLn(repo.name))
+    _ <- ZIO.foreach_(repos)(repo => putStrLn(repo.name))
     clt <- ZIO.service[zioHttpClient.Service]
     zioTopics <- clt.getTopics("zio", "zio")
-    _ <- ZIO.foreach(zioTopics.names)(topic => putStrLn(topic))
+    _ <- ZIO.foreach_(zioTopics.names)(topic => putStrLn(topic))
   } yield ()
 
+  private val PORT = 8090
+
+  private val fooBar: ZHttpApp[Any, Nothing] = ZHttpApp.collect {
+    case ZMethod.GET -> Root / "foo" => ZResponse.text("bar")
+    case ZMethod.GET -> Root / "bar" => ZResponse.text("foo")
+  }
+
+  private val server = ZServer.port(PORT) ++ ZServer.app(fooBar)
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 

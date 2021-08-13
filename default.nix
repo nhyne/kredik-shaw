@@ -1,6 +1,6 @@
 let
     pkgs = import <nixpkgs> {};
-    jre = pkgs.openjdk16;
+    jre = pkgs.jdk;
     sbt = pkgs.sbt.override { jre = jre; };
     buildInputs = [
         jre
