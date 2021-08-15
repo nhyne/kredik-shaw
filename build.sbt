@@ -7,9 +7,9 @@ val circeVersion = "0.13.0"
 
 lazy val root = (project in file("."))
   .settings(
-    skip in publish := true,
+    publish / skip := true,
     name := "root",
-    run in Compile := (run in Compile in `github-watcher`).evaluated
+    Compile / run := (`github-watcher` / Compile / run).evaluated
   )
   .aggregate(`twilio-messenger`, `github-watcher`)
 
@@ -17,7 +17,8 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
   .settings(
     version := "0.0.1-SNAPSHOT",
     organization := "dev.nhyne",
-    mainClass in Compile := Some("Main"),
+    Compile / mainClass := Some("Main"),
+    reStart / mainClass := Some("Main"),
     scalaVersion := scala_2_13,
     scalacOptions ++= Seq(
       "-Xfatal-warnings"
@@ -41,7 +42,7 @@ lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
   .settings(
     version := "0.0.1-SNAPSHOT",
     organization := "dev.nhyne",
-    mainClass in Compile := Some("Messenger"),
+    Compile / mainClass := Some("Messenger"),
     scalaVersion := scala_2_13,
     libraryDependencies ++=
       Seq(

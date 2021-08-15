@@ -7,8 +7,8 @@ import org.http4s.blaze.client.BlazeClientBuilder
 import github4s.{GHResponse, Github}
 import zio.console.Console
 import github4s.domain.Repository
-import zhttp.http.{HttpApp => ZHttpApp, Method => ZMethod, Response => ZResponse, Root, /, ->}
-import zhttp.service.{Server => ZServer}
+import zhttp.http.{->, /, Root, HttpApp => ZHttpApp, Method => ZMethod, Response => ZResponse}
+import zhttp.service.{EventLoopGroup, Server => ZServer}
 import zhttp.service.server.ServerChannelFactory
 import sttp.client3.{Response => SResponse, _}
 import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
@@ -50,15 +50,15 @@ object Main extends App {
     trait Service {
       def performAction(action: TopicAction): ZIO[Console, Throwable, Unit]
     }
-    case class K8sActionConfig(clusterName: String)
-    case class PullRequestEnvironmentConfig(prNumber: Int)
-    case class ArgoConfig(manifestsPath: String)
+    final case class K8sActionConfig(clusterName: String)
+    final case class PullRequestEnvironmentConfig(prNumber: Int)
+    final case class ArgoConfig(manifestsPath: String)
 
     sealed trait TopicAction
     case object TopicAction {
-      case class K8sAction(config: K8sActionConfig) extends TopicAction
-      case class PullRequestEnvironmentAction(config: PullRequestEnvironmentConfig) extends TopicAction
-      case class ArgoSyncAction(config: ArgoConfig) extends TopicAction
+      final case class K8sAction(config: K8sActionConfig) extends TopicAction
+      final case class PullRequestEnvironmentAction(config: PullRequestEnvironmentConfig) extends TopicAction
+      final case class ArgoSyncAction(config: ArgoConfig) extends TopicAction
     }
   }
 
@@ -81,7 +81,7 @@ object Main extends App {
       }
     )
 
-    case class Topics(names: Seq[String])
+    final case class Topics(names: Seq[String])
 
     type GithubTopicsService = Has[Service]
 
@@ -109,28 +109,39 @@ object Main extends App {
     } yield result
   }
 
+  private val PORT = 8090
+
+  private val apiRoot = Root / "api" / "sre-webhook"
+
+  private val fooBar: ZHttpApp[Any, Nothing] = ZHttpApp.collect {
+    case ZMethod.GET -> `apiRoot` / "bar" => ZResponse.text("bar")
+    case ZMethod.GET -> `apiRoot` / "foo" => ZResponse.text("foo")
+  }
+
+  private val server = ZServer.port(PORT) ++ ZServer.app(fooBar)
+
   val program = for {
     repos <- listRepos()
     _ <- ZIO.foreach_(repos)(repo => putStrLn(repo.name))
     clt <- ZIO.service[zioHttpClient.Service]
     zioTopics <- clt.getTopics("zio", "zio")
     _ <- ZIO.foreach_(zioTopics.names)(topic => putStrLn(topic))
+    _ <- server.start
   } yield ()
-
-  private val PORT = 8090
-
-  private val fooBar: ZHttpApp[Any, Nothing] = ZHttpApp.collect {
-    case ZMethod.GET -> Root / "foo" => ZResponse.text("bar")
-    case ZMethod.GET -> Root / "bar" => ZResponse.text("foo")
-  }
-
-  private val server = ZServer.port(PORT) ++ ZServer.app(fooBar)
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
     val httpLayer = Http4sClient.live
     val githubClientLayer = GithubClient.live(None)
 
-    program.inject(httpLayer, githubClientLayer, Console.live, zioHttpClient.live, ZLayer.fromManaged(AsyncHttpClientZioBackend.managed())).exitCode
+    program.inject(
+      httpLayer,
+      githubClientLayer,
+      Console.live,
+      zioHttpClient.live,
+      ZLayer.fromManaged(AsyncHttpClientZioBackend.managed()),
+      ServerChannelFactory.auto,
+      EventLoopGroup.auto(5)
+    ).exitCode
   }
 }
