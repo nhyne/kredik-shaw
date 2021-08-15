@@ -4,16 +4,14 @@ import zio.interop.catz._
 import zio.interop.catz.implicits._
 import org.http4s.client.Client
 import org.http4s.blaze.client.BlazeClientBuilder
-import github4s.{GHResponse, Github}
+import github4s.Github
 import zio.console.Console
 import github4s.domain.Repository
-import zhttp.http.{->, /, Root, HttpApp => ZHttpApp, Method => ZMethod, Response => ZResponse}
-import zhttp.service.{EventLoopGroup, Server => ZServer}
+import zhttp.service.EventLoopGroup
 import zhttp.service.server.ServerChannelFactory
-import sttp.client3.{Response => SResponse, _}
+import sttp.client3._
 import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
 import zio.magic._
-import org.http4s._
 import sttp.capabilities
 import sttp.capabilities.zio.ZioStreams
 import sttp.client3.ziojson._
@@ -109,24 +107,13 @@ object Main extends App {
     } yield result
   }
 
-  private val PORT = 8090
-
-  private val apiRoot = Root / "api" / "sre-webhook"
-
-  private val fooBar: ZHttpApp[Any, Nothing] = ZHttpApp.collect {
-    case ZMethod.GET -> `apiRoot` / "bar" => ZResponse.text("bar")
-    case ZMethod.GET -> `apiRoot` / "foo" => ZResponse.text("foo")
-  }
-
-  private val server = ZServer.port(PORT) ++ ZServer.app(fooBar)
-
   val program = for {
     repos <- listRepos()
     _ <- ZIO.foreach_(repos)(repo => putStrLn(repo.name))
     clt <- ZIO.service[zioHttpClient.Service]
     zioTopics <- clt.getTopics("zio", "zio")
     _ <- ZIO.foreach_(zioTopics.names)(topic => putStrLn(topic))
-    _ <- server.start
+    _ <- WebhookApi.server.start
   } yield ()
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
