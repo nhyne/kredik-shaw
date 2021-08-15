@@ -21,5 +21,4 @@ object WebhookApi {
       _ => Response.text("OK")
     )
   } yield a
-
 }
