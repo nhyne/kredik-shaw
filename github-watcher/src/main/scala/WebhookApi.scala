@@ -13,7 +13,7 @@ object WebhookApi {
     case req @ Method.POST -> `apiRoot` / "pull-request" => handlePostRequest(req)
   }
 
-  val server: Server[Console, HttpError] = Server.port(PORT) ++ Server.app(fooBar)
+  val server: Server[Console, HttpError] = Server.port(PORT) ++ Server.app(fooBar) ++ Server.maxRequestSize(10 * 1024)
 
   def handlePostRequest(request: Request): ResponseM[Console, HttpError] = for {
     a <- putStrLn(request.toString).bimap(
