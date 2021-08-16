@@ -1,7 +1,7 @@
 val zioVersion = "1.0.7"
 val zioConfigVersion = "1.0.0"
 val scala_2_13 = "2.13.6"
-val sttpClientVersion = "3.1.9"
+val sttpClientVersion = "3.3.13"
 val tapirVersion = "0.17.19"
 val circeVersion = "0.13.0"
 
@@ -21,19 +21,24 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
     reStart / mainClass := Some("Main"),
     scalaVersion := scala_2_13,
     scalacOptions ++= Seq(
-      "-Xfatal-warnings"
+      "-Xfatal-warnings",
+        "-deprecation"
     ),
     libraryDependencies ++=
       Seq(
         "dev.zio" %% "zio" % "1.0.9",
         "dev.zio" %% "zio-interop-cats" % "3.1.1.0",
+        "dev.zio" %% "zio-process" % "0.5.0",
+        "com.coralogix" %% "zio-k8s-client" % "1.3.3",
         "com.47deg" %% "github4s" % "0.29.0",
         "io.github.kitlangton" %% "zio-magic" % "0.3.5",
         //"org.http4s" %% "http4s-async-http-client" % "0.23.0-RC1",
         "org.http4s" %% "http4s-blaze-client" % "0.23.0-RC1",
-        "com.softwaremill.sttp.client3" %% "core" % "3.3.11",
-        "com.softwaremill.sttp.client3" %% "zio-json" % "3.3.11",
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % "3.3.11",
+        "com.softwaremill.sttp.client3" %% "slf4j-backend"                 % "3.3.13",
+        "com.softwaremill.sttp.client3" %% "core" % "3.3.13",
+        "com.softwaremill.sttp.client3" %% "zio-json" % "3.3.13",
+        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % "3.3.13",
+          "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % "3.3.13",
         "io.d11" %% "zhttp"      % "1.0.0.0-RC17"
 
       )
