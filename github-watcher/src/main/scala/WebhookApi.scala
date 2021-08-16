@@ -21,7 +21,7 @@ object WebhookApi {
   private val apiRoot = Root / "api" / "sre-webhook"
 
   private val fooBar: HttpApp[Console, HttpError] = HttpApp.collectM {
-    case req @ Method.POST -> `apiRoot` / "pull-request" => handlePostRequest(req)
+    case req@Method.POST -> `apiRoot` / "pull-request" => handlePostRequest(req)
   }
 
   val server: Server[Console, HttpError] = Server.port(PORT) ++ Server.app(fooBar) ++ Server.maxRequestSize(10 * 1024)
@@ -33,8 +33,10 @@ object WebhookApi {
     )
   } yield a
 
-  private def gitClone(repo: String)= Command("git", "clone", repo)
+  private def gitClone(repo: String) = Command("git", "clone", repo)
+
   private def gitCheckoutBranch(branch: String) = Command("git", "checkout", branch)
+
   private def gitMerge(target: String) = Command("git", "merge", target)
 
   def gitCloneAndMerge(organization: String, repo: String, branch: String, target: String): ZIO[Blocking with Console, Exception, ExitCode] = for {
@@ -52,7 +54,7 @@ object WebhookApi {
   }
 
   final case class PushEvent(
-                            ref: String
+                              ref: String
 
                             )
 

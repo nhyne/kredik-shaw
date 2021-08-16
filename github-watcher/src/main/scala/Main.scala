@@ -12,7 +12,6 @@ import zhttp.service.EventLoopGroup
 import zhttp.service.server.ServerChannelFactory
 import sttp.client3._
 import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
-//import sttp.client3.asynchttpclient.zio._
 import zio.magic._
 import sttp.capabilities
 import sttp.capabilities.zio.ZioStreams
@@ -53,14 +52,20 @@ object Main extends App {
     trait Service {
       def performAction(action: TopicAction): ZIO[Console, Throwable, Unit]
     }
+
     final case class K8sActionConfig(clusterName: String)
+
     final case class PullRequestEnvironmentConfig(prNumber: Int)
+
     final case class ArgoConfig(manifestsPath: String)
 
     sealed trait TopicAction
+
     case object TopicAction {
       final case class K8sAction(config: K8sActionConfig) extends TopicAction
+
       final case class PullRequestEnvironmentAction(config: PullRequestEnvironmentConfig) extends TopicAction
+
       final case class ArgoSyncAction(config: ArgoConfig) extends TopicAction
     }
   }
@@ -114,18 +119,18 @@ object Main extends App {
 
   val program = for {
     repos <- listRepos()
-//    _ <- ZIO.fromOption(repos.headOption).flatMap(repo => putStrLn(s"$repo"))
+    //    _ <- ZIO.fromOption(repos.headOption).flatMap(repo => putStrLn(s"$repo"))
     _ <- ZIO.foreach_(repos)(repo => putStrLn(repo.name))
     clt <- ZIO.service[zioHttpClient.Service]
     zioTopics <- clt.getTopics("zio", "zio")
     _ <- ZIO.foreach_(zioTopics.names)(topic => putStrLn(topic))
-    mergeOutput <- WebhookApi.gitCloneAndMerge("zio", "zio", "series/2.x", "master").mapError( e => {
+    mergeOutput <- WebhookApi.gitCloneAndMerge("zio", "zio", "series/2.x", "master").mapError(e => {
       println(e.getCause.toString)
       "abc"
     })
     _ <- mergeOutput match {
-      case ExitCode(0) =>  putStrLn("merged successfully")
-      case ExitCode(code) =>  putStrLn("failed merge, got code: $code")
+      case ExitCode(0) => putStrLn("merged successfully")
+      case ExitCode(code) => putStrLn("failed merge, got code: $code")
     }
     _ <- putStrLn(s"$mergeOutput")
     /*
@@ -142,7 +147,7 @@ object Main extends App {
     val httpLayer = Http4sClient.live
     val githubClientLayer = GithubClient.live(None)
     val asyncHttpClientZioBackend = ZLayer.fromManaged(AsyncHttpClientZioBackend.managed())
-//    val namespaces = (k8sDefault ++ asyncHttpClientZioBackend) >>> Namespaces.live
+    //    val namespaces = (k8sDefault ++ asyncHttpClientZioBackend) >>> Namespaces.live
 
     program.inject(
       httpLayer,
@@ -152,10 +157,10 @@ object Main extends App {
       asyncHttpClientZioBackend >>> zioHttpClient.live,
       k8sDefault,
       Namespaces.live,
-//      asyncHttpClientZioBackend,
+      //      asyncHttpClientZioBackend,
       ServerChannelFactory.auto,
       System.live,
-//      namespaces,
+      //      namespaces,
       EventLoopGroup.auto(5)
     ).exitCode
   }
