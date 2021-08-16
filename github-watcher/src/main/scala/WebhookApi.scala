@@ -47,9 +47,9 @@ object WebhookApi {
   } yield exitCode
 
   def createPRNamespace(prNumber: Int, repo: String): ZIO[Namespaces, K8sFailure, Namespace] = {
-    val newNamespace = Namespace(metadata = Some(ObjectMeta(
-      name = Some(s"$repo-PR-$prNumber")
-    )))
+    val newNamespace = Namespace(metadata = ObjectMeta(
+      name = Some(s"$repo-pr-$prNumber"),
+    ))
     create(newNamespace)
   }
 

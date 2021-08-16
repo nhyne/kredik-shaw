@@ -36,39 +36,6 @@ object Main extends App {
   }
 
 
-  object ActionService {
-    type ActionService = Has[Service]
-
-    val live: ZLayer[Console, Throwable, ActionService] = ZLayer.succeed(
-      new Service {
-        override def performAction(action: TopicAction): ZIO[Console, Throwable, Unit] = action match {
-          case TopicAction.K8sAction(config) => putStrLn("k8s action")
-          case TopicAction.PullRequestEnvironmentAction(config) => putStrLn("pr actoin")
-          case TopicAction.ArgoSyncAction(config) => putStrLn("argo action")
-        }
-      }
-    )
-
-    trait Service {
-      def performAction(action: TopicAction): ZIO[Console, Throwable, Unit]
-    }
-
-    final case class K8sActionConfig(clusterName: String)
-
-    final case class PullRequestEnvironmentConfig(prNumber: Int)
-
-    final case class ArgoConfig(manifestsPath: String)
-
-    sealed trait TopicAction
-
-    case object TopicAction {
-      final case class K8sAction(config: K8sActionConfig) extends TopicAction
-
-      final case class PullRequestEnvironmentAction(config: PullRequestEnvironmentConfig) extends TopicAction
-
-      final case class ArgoSyncAction(config: ArgoConfig) extends TopicAction
-    }
-  }
 
   object zioHttpClient {
     implicit val myResponseJsonDecoder: JsonDecoder[Topics] = DeriveJsonDecoder.gen[Topics]
@@ -119,7 +86,6 @@ object Main extends App {
 
   val program = for {
     repos <- listRepos()
-    //    _ <- ZIO.fromOption(repos.headOption).flatMap(repo => putStrLn(s"$repo"))
     _ <- ZIO.foreach_(repos)(repo => putStrLn(repo.name))
     clt <- ZIO.service[zioHttpClient.Service]
     zioTopics <- clt.getTopics("zio", "zio")
@@ -132,13 +98,15 @@ object Main extends App {
       case ExitCode(0) => putStrLn("merged successfully")
       case ExitCode(code) => putStrLn("failed merge, got code: $code")
     }
-    _ <- putStrLn(s"$mergeOutput")
     /*
       check the merge code, if we have a success code then we continue to reading the config file -- stored where?
       if we have a failure then we want to comment on the PR saying so -- or do we send a response saying "merge failed"
      */
 
-    ns <- WebhookApi.createPRNamespace(23, "zio")
+    ns <- WebhookApi.createPRNamespace(23, "zio").tapError( e =>
+      putStrLn(e.toString)
+    )
+    _ <- putStrLn(s"$ns")
     _ <- WebhookApi.server.start
   } yield ()
 
@@ -147,7 +115,6 @@ object Main extends App {
     val httpLayer = Http4sClient.live
     val githubClientLayer = GithubClient.live(None)
     val asyncHttpClientZioBackend = ZLayer.fromManaged(AsyncHttpClientZioBackend.managed())
-    //    val namespaces = (k8sDefault ++ asyncHttpClientZioBackend) >>> Namespaces.live
 
     program.inject(
       httpLayer,
@@ -157,10 +124,8 @@ object Main extends App {
       asyncHttpClientZioBackend >>> zioHttpClient.live,
       k8sDefault,
       Namespaces.live,
-      //      asyncHttpClientZioBackend,
       ServerChannelFactory.auto,
       System.live,
-      //      namespaces,
       EventLoopGroup.auto(5)
     ).exitCode
   }
