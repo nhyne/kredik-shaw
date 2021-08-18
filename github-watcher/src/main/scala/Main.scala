@@ -103,10 +103,7 @@ object Main extends App {
       if we have a failure then we want to comment on the PR saying so -- or do we send a response saying "merge failed"
      */
 
-    ns <- WebhookApi.createPRNamespace(23, "zio").tapError( e =>
-      putStrLn(e.toString)
-    )
-    _ <- putStrLn(s"$ns")
+    _ <- WebhookApi.createPRNamespace(23, "zio")
     _ <- WebhookApi.server.start
   } yield ()
 

@@ -1,6 +1,5 @@
 package actions
 
-import zio.process.{Command, CommandError}
 import zio.{Has, ZLayer}
 
 import java.io.File
@@ -18,7 +17,7 @@ object DockerImageBuild {
   )
 
   trait Service {
-    def buildDockerImage(file: File, workingDir: File)
-    def buildDockerImage(command: Seq[String], env: Map[String, String])
+    def buildDockerImage(file: File, workingDir: File): Unit
+    def buildDockerImage(command: Seq[String], env: Map[String, String]): Unit
   }
 }
