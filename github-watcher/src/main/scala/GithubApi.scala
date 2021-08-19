@@ -65,11 +65,12 @@ object GithubApi {
     }
   }
 
-  def listRepos(): ZIO[GithubClientLayer, Throwable, List[Repository]] = {
+  def listRepos(): ZIO[GithubClientLayer with Console, Throwable, List[Repository]] = {
     for {
       client <- ZIO.service[Github[Task]]
-      repos <- client.repos.listUserRepos("nhyne")
+      repos <- client.repos.listUserRepos("zio")
       result <- ZIO.fromEither(repos.result).mapError(e => e.getCause)
+      _ <- ZIO.foreach_(result) { repo => putStrLn(s"${repo.owner.name}") }
     } yield result
   }
 

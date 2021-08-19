@@ -1,7 +1,7 @@
 import zhttp.service._
 import zhttp.http._
 import zio._
-import zio.blocking.Blocking
+import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
 import zio.process.{Command, CommandError}
 import com.coralogix.zio.k8s.client.K8sFailure
@@ -9,8 +9,8 @@ import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, get}
 import com.coralogix.zio.k8s.model.core.v1.Namespace
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.ObjectMeta
 import zio.json._
-import java.nio.file.Files
 
+import java.nio.file.Files
 import java.io.File
 
 object WebhookApi {
@@ -30,11 +30,22 @@ object WebhookApi {
     case Some(body) => for {
       _ <- putStrLn(body).mapError(_.toString)
       pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-
     } yield pullRequestEvent
     case None => ZIO.fail("Did not receive a request body")
 
   }
+
+  def performEventAction(event: PullRequestEvent) = {
+    event.action match {
+      case PullRequestAction.Opened => ZIO.succeed("open")
+      case PullRequestAction.Synchronize => ZIO.succeed("sync")
+      case PullRequestAction.Closed => ZIO.succeed("close")
+    }
+  }
+
+//  private def openedEvent(event: PullRequestEvent) = for {
+//    _ <- gitCloneAndMerge()
+//  }
 
   private def gitClone(repo: String) = Command("git", "clone", repo)
 
@@ -50,10 +61,14 @@ object WebhookApi {
   def gitCloneAndMerge(organization: String, repo: String, branch: String, target: String): ZIO[Blocking with Console, Throwable, ExitCode] = for {
     workingDir <- createRepoCloneDir(s"$organization-$repo")
     _ <- gitClone(s"https://github.com/$organization/$repo").workingDirectory(workingDir).run
-    repoDir = new File(s"${workingDir.getAbsolutePath}/repo")
+    repoDir = new File(s"${workingDir.getAbsolutePath}/$repo")
     _ <- gitCheckoutBranch(branch).workingDirectory(repoDir).run
     exitCode <- gitMerge(target).workingDirectory(repoDir).run.exitCode
   } yield exitCode
+
+  def cleanupTempDir(dir: File): RIO[Blocking, Boolean] = {
+    effectBlocking(dir.delete())
+  }
 
   def createPRNamespace(prNumber: Int, repo: String): ZIO[Namespaces, K8sFailure, Namespace] = {
     val namespaceName = s"$repo-pr-$prNumber"
@@ -67,6 +82,7 @@ object WebhookApi {
     } yield ns
   }
 
+
   final case class PullRequestEvent(action: PullRequestAction, number: Int, @jsonField("pull_request") pullRequest: PullRequest)
 
   final case class PullRequest(
@@ -78,8 +94,12 @@ object WebhookApi {
                                 base: Branch
                               )
 
-  final case class Branch(ref: String, sha: String) // there are a lot more fields than just these
+  final case class Branch(ref: String, sha: String, repo: Repository) // there are a lot more fields than just these
+  final case class Repository(name: String, @jsonField("full_name") fullName: String)
+  // TODO: Would be better if I can just pull the owner from the request body. Not sure if there's something different between "owner" and "organization"
+//  final case class Owner()
 
+  implicit val repositoryDecoder: JsonDecoder[Repository] = DeriveJsonDecoder.gen[Repository]
   implicit val branchDecoder: JsonDecoder[Branch] = DeriveJsonDecoder.gen[Branch]
   implicit val pullRequestDecoder: JsonDecoder[PullRequest] = DeriveJsonDecoder.gen[PullRequest]
   implicit val pullRequestEventDecoder: JsonDecoder[PullRequestEvent] = DeriveJsonDecoder.gen[PullRequestEvent]
