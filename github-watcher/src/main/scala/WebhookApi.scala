@@ -9,6 +9,7 @@ import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, get}
 import com.coralogix.zio.k8s.model.core.v1.Namespace
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.ObjectMeta
 import zio.json._
+import java.nio.file.Files
 
 import java.io.File
 
@@ -31,7 +32,7 @@ object WebhookApi {
       pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
 
     } yield pullRequestEvent
-    case None => ???
+    case None => ZIO.fail("Did not receive a request body")
 
   }
 
@@ -41,12 +42,17 @@ object WebhookApi {
 
   private def gitMerge(target: String) = Command("git", "merge", target)
 
+  private def createRepoCloneDir(repo: String) = ZIO.effect {
+    Files.createTempDirectory(s"pr-$repo").toFile
+  }
+
   // TODO: Should do this work in a temp directory that gets cleaned up later
-  def gitCloneAndMerge(organization: String, repo: String, branch: String, target: String): ZIO[Blocking with Console, Exception, ExitCode] = for {
-    _ <- gitClone(s"https://github.com/$organization/$repo").run
-    workingDir = new File(repo)
-    _ <- gitCheckoutBranch(branch).workingDirectory(workingDir).run
-    exitCode <- gitMerge(target).workingDirectory(workingDir).run.exitCode
+  def gitCloneAndMerge(organization: String, repo: String, branch: String, target: String): ZIO[Blocking with Console, Throwable, ExitCode] = for {
+    workingDir <- createRepoCloneDir(s"$organization-$repo")
+    _ <- gitClone(s"https://github.com/$organization/$repo").workingDirectory(workingDir).run
+    repoDir = new File(s"${workingDir.getAbsolutePath}/repo")
+    _ <- gitCheckoutBranch(branch).workingDirectory(repoDir).run
+    exitCode <- gitMerge(target).workingDirectory(repoDir).run.exitCode
   } yield exitCode
 
   def createPRNamespace(prNumber: Int, repo: String): ZIO[Namespaces, K8sFailure, Namespace] = {
