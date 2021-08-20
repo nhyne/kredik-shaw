@@ -19,14 +19,6 @@ object Main extends App {
     clt <- ZIO.service[zioHttpClient.Service]
     zioTopics <- clt.getTopics("zio", "zio")
     _ <- ZIO.foreach_(zioTopics.names)(topic => putStrLn(topic))
-    mergeOutput <- WebhookApi.gitCloneAndMerge("zio", "zio", "series/2.x", "master").mapError(e => {
-      println(e.getCause.toString)
-      "abc"
-    })
-    _ <- mergeOutput match {
-      case ExitCode(0) => putStrLn("merged successfully")
-      case ExitCode(code) => putStrLn("failed merge, got code: $code")
-    }
     /*
       check the merge code, if we have a success code then we continue to reading the config file -- stored where?
       if we have a failure then we want to comment on the PR saying so -- or do we send a response saying "merge failed"
