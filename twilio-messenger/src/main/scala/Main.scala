@@ -18,10 +18,10 @@ object Person {
 }
 
 case class NewUser(
-  firstName: String,
-  lastName: String,
-  email: String,
-  phoneNumber: String
+    firstName: String,
+    lastName: String,
+    email: String,
+    phoneNumber: String
 )
 
 object User {
@@ -30,11 +30,11 @@ object User {
 }
 
 case class User(
-  firstName: String,
-  lastName: String,
-  email: String,
-  phoneNumber: String,
-  uuid: UUID
+    firstName: String,
+    lastName: String,
+    email: String,
+    phoneNumber: String,
+    uuid: UUID
 )
 
 object Messenger extends App {
@@ -62,7 +62,7 @@ object Messenger extends App {
     } yield a
 
   def doAGetUser(
-    userId: String
+      userId: String
   ): ResponseM[UserService.UserService with Logging, HttpError] =
     for {
       userUUID <-
