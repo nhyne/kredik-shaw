@@ -8,11 +8,17 @@ object PullRequestEnvironment {
 
   val live: ZLayer[Console, Throwable, ActionService] = ZLayer.succeed(
     new Service {
-      override def createPREnvironment(config: PREnvConfig): ZIO[Console, Throwable, Unit] = ???
+      override def createPREnvironment(
+          config: PREnvConfig
+      ): ZIO[Console, Throwable, Unit] = ???
 
-      override def updatePREnvironment(config: PREnvConfig): ZIO[Console, Throwable, Unit] = ???
+      override def updatePREnvironment(
+          config: PREnvConfig
+      ): ZIO[Console, Throwable, Unit] = ???
 
-      override def destroyPREnvironment(config: PREnvConfig): ZIO[Console, Throwable, Unit] = ???
+      override def destroyPREnvironment(
+          config: PREnvConfig
+      ): ZIO[Console, Throwable, Unit] = ???
     }
   )
 
@@ -23,5 +29,9 @@ object PullRequestEnvironment {
   }
 
   // TODO: Should this use a github repo type?
-  final case class PREnvConfig(prNumber: Int, repo: String, organization: String)
+  final case class PREnvConfig(
+      prNumber: Int,
+      repo: String,
+      organization: String
+  )
 }

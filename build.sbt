@@ -40,7 +40,6 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % "3.3.13",
         "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % "3.3.13",
         "io.d11" %% "zhttp" % "1.0.0.0-RC17"
-
       )
   )
 lazy val `twilio-messenger` = (project in file("./twilio-messenger"))

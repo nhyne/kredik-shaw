@@ -21,43 +21,58 @@ object GithubApi {
   object Http4sClient {
     val live: ZLayer[Any, Throwable, Has[Client[Task]]] = {
       implicit val runtime: Runtime[ZEnv] = Runtime.default
-      val res = BlazeClientBuilder[Task](runtime.platform.executor.asEC).resource.toManagedZIO
+      val res = BlazeClientBuilder[Task](
+        runtime.platform.executor.asEC
+      ).resource.toManagedZIO
       ZLayer.fromManaged(res)
     }
   }
 
   object zioHttpClient {
-    implicit val myResponseJsonDecoder: JsonDecoder[Topics] = DeriveJsonDecoder.gen[Topics]
+    implicit val myResponseJsonDecoder: JsonDecoder[Topics] =
+      DeriveJsonDecoder.gen[Topics]
     type SBackend = SttpBackend[Task, ZioStreams with capabilities.WebSockets]
 
-    val live: ZLayer[Has[SBackend], Throwable, GithubTopicsService] = ZLayer.succeed(
-      new Service {
-        override def getTopics(org: String, repo: String): ZIO[Has[SBackend], Throwable, Topics] = for {
-          client <- ZIO.service[SBackend]
-          request = basicRequest.get(uri"https://api.github.com/repos/$org/$repo/topics")
-            .header("Accept", "application/vnd.github.mercy-preview+json")
-            .response(asJson[Topics])
-          response <- client.send(request)
-          topics <- ZIO.fromEither(response.body)
-        } yield topics
+    val live: ZLayer[Has[SBackend], Throwable, GithubTopicsService] =
+      ZLayer.succeed(
+        new Service {
+          override def getTopics(
+              org: String,
+              repo: String
+          ): ZIO[Has[SBackend], Throwable, Topics] = for {
+            client <- ZIO.service[SBackend]
+            request = basicRequest
+              .get(uri"https://api.github.com/repos/$org/$repo/topics")
+              .header("Accept", "application/vnd.github.mercy-preview+json")
+              .response(asJson[Topics])
+            response <- client.send(request)
+            topics <- ZIO.fromEither(response.body)
+          } yield topics
 
-        override def nothing(something: String): ZIO[Console, IOException, Unit] = putStrLn(something)
-      }
-    )
+          override def nothing(
+              something: String
+          ): ZIO[Console, IOException, Unit] = putStrLn(something)
+        }
+      )
 
     final case class Topics(names: Seq[String])
 
     type GithubTopicsService = Has[Service]
 
     trait Service {
-      def getTopics(org: String, repo: String): ZIO[Has[SBackend], Throwable, Topics]
+      def getTopics(
+          org: String,
+          repo: String
+      ): ZIO[Has[SBackend], Throwable, Topics]
 
       def nothing(something: String): ZIO[Console, IOException, Unit]
     }
   }
 
   object GithubClient {
-    def live(accessToken: Option[String]): ZLayer[Has[Client[Task]], Throwable, Has[Github[Task]]] = {
+    def live(
+        accessToken: Option[String]
+    ): ZLayer[Has[Client[Task]], Throwable, Has[Github[Task]]] = {
       (for {
         client <- ZIO.service[Client[Task]]
         github = Github(accessToken = accessToken, client = client)
@@ -65,7 +80,8 @@ object GithubApi {
     }
   }
 
-  def listRepos(): ZIO[GithubClientLayer with Console, Throwable, List[Repository]] = {
+  def listRepos()
+      : ZIO[GithubClientLayer with Console, Throwable, List[Repository]] = {
     for {
       client <- ZIO.service[Github[Task]]
       repos <- client.repos.listUserRepos("zio")
