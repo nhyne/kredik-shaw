@@ -7,12 +7,19 @@ import zio.magic._
 import zio.system.System
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
+import zio.logging._
+import zio.clock.Clock
 
 object Main extends App {
 
   private val program = WebhookApi.server.start
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
+
+    val logger = Logging.console(
+      LogLevel.Info,
+      LogFormat.ColoredLogFormat()
+    ) >>> Logging.withRootLoggerName("github-watcher")
 
     program
       .inject(
@@ -22,7 +29,9 @@ object Main extends App {
         Namespaces.live,
         ServerChannelFactory.auto,
         System.live,
-        EventLoopGroup.auto(5)
+        EventLoopGroup.auto(5),
+        Clock.live,
+        logger
       )
       .exitCode
   }

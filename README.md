@@ -12,6 +12,7 @@
 - [ ] way to mark PR as do-not-deploy
 - [ ] some general config file for what exactly needs to be deployed
 - [ ] json logging
+- [ ] reaper to clean up namespaces that have been left around (for stale PRs)
 
 ## Databases
 - [ ] Need way to deploy ephemeral databases in the namespace

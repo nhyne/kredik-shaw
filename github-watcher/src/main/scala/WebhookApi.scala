@@ -4,11 +4,12 @@ import zio._
 import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
 import zio.process.Command
-import com.coralogix.zio.k8s.client.K8sFailure
-import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, get}
+import com.coralogix.zio.k8s.client.{K8sFailure, NotFound => K8sNotFound}
+import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, delete, get}
 import com.coralogix.zio.k8s.model.core.v1.Namespace
-import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.ObjectMeta
+import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{DeleteOptions, ObjectMeta}
 import zio.json._
+import zio.logging._
 
 import java.nio.file.Files
 import java.io.File
@@ -16,11 +17,12 @@ import java.io.File
 object WebhookApi {
 
   private val PORT = 8090
+  private type ServerEnv = Console with Blocking with Namespaces with Logging
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
   private val apiServer
-      : HttpApp[Console with Blocking with Namespaces, HttpError] =
+      : HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM { case req @ Method.POST -> `apiRoot` =>
       handlePostRequest(req).mapBoth(
         cause =>
@@ -31,7 +33,7 @@ object WebhookApi {
       )
     }
 
-  val server: Server[Console with Blocking with Namespaces, HttpError] =
+  val server: Server[ServerEnv, HttpError] =
     Server.port(PORT) ++ Server.app(apiServer) ++ Server.maxRequestSize(100 * 1024)
 
   def handlePostRequest(request: Request) = request.getBodyAsString match {
@@ -45,11 +47,12 @@ object WebhookApi {
 
   }
 
-  def performEventAction(event: PullRequestEvent) = {
+  def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
       case PullRequestAction.Opened      => ZIO.succeed("open")
       case PullRequestAction.Synchronize => openedEvent(event).map(_.toString)
-      case PullRequestAction.Closed      => ZIO.succeed("close")
+      case PullRequestAction.Closed      => deleteNamespace(event)
+      case PullRequestAction.Unknown(actionType)     => log.info(s"got unknown action type: $actionType")
     }
   }
 
@@ -60,11 +63,11 @@ object WebhookApi {
       event.pullRequest.head.ref,
       event.pullRequest.base.ref
     )
-    ns <- createPRNamespace(
+    nsName <- createPRNamespace(
       event.pullRequest.number,
       event.pullRequest.base.repo.name
     )
-    applied <- applyFile(mergeSuccessful, ns)
+    applied <- applyFile(mergeSuccessful, nsName)
     _ <- cleanupTempDir(mergeSuccessful)
   } yield applied
 
@@ -77,12 +80,12 @@ object WebhookApi {
     Files.createTempDirectory(s"pr-$repo").toFile
   }
 
-  private def applyFile(repoDir: File, namespace: Namespace) = for {
+  private def applyFile(repoDir: File, namespaceName: String) = for {
     exitCode <- Command(
       "kubectl",
       "apply",
       "-n",
-      namespace.metadata.flatMap(_.name).getOrElse(""),
+      namespaceName,
       "-f",
       s"${repoDir.getAbsolutePath}/.watcher.conf/basic.yaml"
     ).run
@@ -107,21 +110,30 @@ object WebhookApi {
     effectBlocking(dir.delete())
   }
 
-  def createPRNamespace(
+  private def createPRNamespace(
       prNumber: Int,
       repo: String
-  ): ZIO[Namespaces, K8sFailure, Namespace] = {
-    val namespaceName = s"$repo-pr-$prNumber"
-    val prNamespace = Namespace(metadata =
-      ObjectMeta(
-        name = Some(namespaceName)
-      )
-    )
+  ): ZIO[Namespaces, K8sFailure, String] = {
+    val (nsName, prNamespace) = namespaceObject(prNumber, repo)
+    get(nsName).foldM( {
+      case K8sNotFound => create(prNamespace)
+      case e => ZIO.fail(e)
+      },
+      success => ZIO.succeed(success)
+    ).map(_ => nsName)
+  }
+
+  private def namespaceName(prNumber: Int, repo: String): String = s"$repo-pr-$prNumber"
+  private def namespaceObject(prNumber: Int, repo: String): (String, Namespace) = {
+    val nsName = namespaceName(prNumber, repo)
+    (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))
+  }
+
+  def deleteNamespace(event: PullRequestEvent) = {
+    val nsName = namespaceName(event.number, event.pullRequest.base.repo.name)
     for {
-      ns <- get(namespaceName).foldM(
-        _ => create(prNamespace),
-        success => ZIO.succeed(success)
-      )
+      _ <- log.info(s"deleting namespace: $nsName")
+      ns <- delete(nsName, DeleteOptions())
     } yield ns
   }
 
@@ -172,12 +184,14 @@ object WebhookApi {
 
     case object Closed extends PullRequestAction
 
+    final case class Unknown(`type`: String) extends PullRequestAction
+
     implicit val prActionDecoder: JsonDecoder[PullRequestAction] =
       JsonDecoder[String].map {
         case "opened"      => Opened
         case "synchronize" => Synchronize
         case "closed"      => Closed
-        case _             => ???
+        case actionType    => Unknown(actionType)
       }
   }
 
