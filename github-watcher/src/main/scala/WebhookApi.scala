@@ -5,9 +5,18 @@ import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
 import zio.process.Command
 import com.coralogix.zio.k8s.client.{K8sFailure, NotFound => K8sNotFound}
-import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, delete, get}
+import com.coralogix.zio.k8s.client.v1.namespaces.{
+  Namespaces,
+  create,
+  delete,
+  get
+}
 import com.coralogix.zio.k8s.model.core.v1.Namespace
-import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{DeleteOptions, ObjectMeta}
+import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
+  DeleteOptions,
+  ObjectMeta,
+  Status => K8sStatus
+}
 import zio.json._
 import zio.logging._
 
@@ -21,8 +30,7 @@ object WebhookApi {
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
-  private val apiServer
-      : HttpApp[ServerEnv, HttpError] =
+  private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM { case req @ Method.POST -> `apiRoot` =>
       handlePostRequest(req).mapBoth(
         cause =>
@@ -34,7 +42,9 @@ object WebhookApi {
     }
 
   val server: Server[ServerEnv, HttpError] =
-    Server.port(PORT) ++ Server.app(apiServer) ++ Server.maxRequestSize(100 * 1024)
+    Server.port(PORT) ++ Server.app(apiServer) ++ Server.maxRequestSize(
+      100 * 1024
+    )
 
   def handlePostRequest(request: Request) = request.getBodyAsString match {
 
@@ -52,7 +62,8 @@ object WebhookApi {
       case PullRequestAction.Opened      => ZIO.succeed("open")
       case PullRequestAction.Synchronize => openedEvent(event).map(_.toString)
       case PullRequestAction.Closed      => deleteNamespace(event)
-      case PullRequestAction.Unknown(actionType)     => log.info(s"got unknown action type: $actionType")
+      case PullRequestAction.Unknown(actionType) =>
+        log.warn(s"got unknown action type: $actionType")
     }
   }
 
@@ -115,26 +126,44 @@ object WebhookApi {
       repo: String
   ): ZIO[Namespaces, K8sFailure, String] = {
     val (nsName, prNamespace) = namespaceObject(prNumber, repo)
-    get(nsName).foldM( {
-      case K8sNotFound => create(prNamespace)
-      case e => ZIO.fail(e)
-      },
-      success => ZIO.succeed(success)
-    ).map(_ => nsName)
+    get(nsName)
+      .foldM(
+        {
+          case K8sNotFound => create(prNamespace)
+          case e           => ZIO.fail(e)
+        },
+        success => ZIO.succeed(success)
+      )
+      .map(_ => nsName)
   }
 
-  private def namespaceName(prNumber: Int, repo: String): String = s"$repo-pr-$prNumber"
-  private def namespaceObject(prNumber: Int, repo: String): (String, Namespace) = {
+  private def namespaceName(prNumber: Int, repo: String): String =
+    s"$repo-pr-$prNumber"
+  private def namespaceObject(
+      prNumber: Int,
+      repo: String
+  ): (String, Namespace) = {
     val nsName = namespaceName(prNumber, repo)
     (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))
   }
 
   def deleteNamespace(event: PullRequestEvent) = {
     val nsName = namespaceName(event.number, event.pullRequest.base.repo.name)
-    for {
-      _ <- log.info(s"deleting namespace: $nsName")
-      ns <- delete(nsName, DeleteOptions())
-    } yield ns
+    delete(nsName, DeleteOptions()).foldM(
+      {
+        case K8sNotFound =>
+          log.warn(
+            s"attempting to delete namespace: $nsName that does not exist"
+          ) *> ZIO.succeed(
+            K8sStatus(code = 200, message = s"namespace $nsName did not exist")
+          )
+        case f =>
+          log.warn(s"failed to delete ns: $nsName with error: $f") *> ZIO.fail(
+            f
+          )
+      },
+      status => ZIO.succeed(status)
+    )
   }
 
   final case class PullRequestEvent(
