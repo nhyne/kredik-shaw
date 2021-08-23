@@ -48,13 +48,16 @@ object Template {
       new Service {
         override def templateManifests(
             repoFolder: Path,
-            namespaceName: String
+            namespaceName: String,
+            gitRevision: String
         ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path] = {
           for {
             config <- ZIO.service[RepoConfig]
-            templateOutput <- template(repoFolder, config).map(
-              substituteNamespace(_, namespaceName)
-            )
+            templateOutput <- template(repoFolder, config)
+              .map(
+                substituteNamespace(_, namespaceName)
+              )
+              .map(substituteImage(_, gitRevision))
             tempFilePath <- Files.createTempFile(
               prefix = Some("templatedOutput"),
               fileAttributes = Seq(
@@ -64,6 +67,7 @@ object Template {
               )
             )
             _ <- FileChannel.open(tempFilePath, StandardOpenOption.WRITE).use {
+              // TODO: Look into if this gets cleaned up right away
               channel =>
                 channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
             }
@@ -80,10 +84,15 @@ object Template {
   private def substituteNamespace(manifests: String, namespaceName: String) =
     manifests.replace(NAMESPACE_SUBSTITUTION, namespaceName)
 
+  private val GIT_REV_SUBSTITUTION = "GIT_HASH"
+  private def substituteImage(manifests: String, gitTag: String) =
+    manifests.replace(GIT_REV_SUBSTITUTION, "latest")
+
   trait Service {
     def templateManifests(
         repoFolder: Path,
-        namespaceName: String
+        namespaceName: String,
+        gitRevision: String
     ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path]
   }
 

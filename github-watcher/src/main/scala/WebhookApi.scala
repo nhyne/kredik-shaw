@@ -83,7 +83,7 @@ object WebhookApi {
   }
 
   private def openedEvent(event: PullRequestEvent) = for {
-    repoDirectory <- gitCloneAndMerge(
+    (repoDirectory, gitRev) <- gitCloneAndMerge(
       event.pullRequest.base.repo.owner.login,
       event.pullRequest.head.repo.name,
       event.pullRequest.head.ref,
@@ -95,11 +95,11 @@ object WebhookApi {
     )
     configLayer = ZConfig.fromPropertiesFile(
       repoDirectory./(".watcher.conf").toString(),
-      RepoConfig.configDescriptor
+      RepoConfig.repoConfigDescriptor
     )
     templateService <- ZIO.service[template.Template.Service]
     templatedManifests <- templateService
-      .templateManifests(repoDirectory, nsName)
+      .templateManifests(repoDirectory, nsName, gitRev)
       .inject(configLayer, Blocking.live)
     applied <- applyFile(templatedManifests, nsName)
     _ <- cleanupTempDir(repoDirectory)
@@ -108,10 +108,13 @@ object WebhookApi {
   private def gitClone(repo: String, branch: String) =
     Command("git", "clone", repo, s"--branch=$branch")
 
-  private def gitMerge(target: String) = Command("git", "merge", target)
+  private def gitMerge(target: String) =
+    Command("git", "merge", s"origin/$target")
 
   private def createRepoCloneDir(repo: String) =
     Files.createTempDirectory(Some(s"pr-$repo-"), Seq.empty)
+
+  private val gitRevParse = Command("git", "rev-parse", "HEAD")
 
   private def applyFile(repoDir: ZFPath, namespaceName: String) = for {
     exitCode <- Command(
@@ -130,14 +133,15 @@ object WebhookApi {
       repo: String,
       branch: String,
       target: String
-  ): ZIO[Blocking with Console, Throwable, ZFPath] = for {
+  ): ZIO[Blocking with Console, Throwable, (ZFPath, String)] = for {
     workingDir <- createRepoCloneDir(s"$organization-$repo")
     _ <- gitClone(s"https://github.com/$organization/$repo", branch)
       .workingDirectory(workingDir.toFile)
       .run
     repoDir = workingDir./(repo)
+    gitRev <- gitRevParse.workingDirectory(repoDir.toFile).string
     _ <- gitMerge(target).workingDirectory(repoDir.toFile).run.exitCode
-  } yield repoDir
+  } yield (repoDir, gitRev)
 
   // TODO: Does zio-nio have a helper for this?
   def cleanupTempDir(dir: ZFPath): RIO[Blocking, Boolean] = {
