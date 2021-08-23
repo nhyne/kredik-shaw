@@ -5,23 +5,36 @@ import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
 import zio.process.Command
 import com.coralogix.zio.k8s.client.{K8sFailure, NotFound => K8sNotFound}
-import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, delete, get}
+import com.coralogix.zio.k8s.client.v1.namespaces.{
+  Namespaces,
+  create,
+  delete,
+  get
+}
 import com.coralogix.zio.k8s.model.core.v1.Namespace
-import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{DeleteOptions, ObjectMeta, Status => K8sStatus}
+import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
+  DeleteOptions,
+  ObjectMeta,
+  Status => K8sStatus
+}
 import template.RepoConfig
 import zio.json._
 import zio.logging._
 import zio.config._
 import template.Template.TemplateService
+import zio.clock.Clock
 import zio.magic._
-
-import java.nio.file.Files
-import java.io.File
+import zio.nio.core.file.{Path => ZFPath}
+import zio.nio.file.Files
 
 object WebhookApi {
 
   private val PORT = 8090
-  private type ServerEnv = Console with Blocking with Namespaces with Logging with TemplateService
+  private type ServerEnv = Console
+    with Blocking
+    with Namespaces
+    with Logging
+    with TemplateService
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
@@ -29,6 +42,7 @@ object WebhookApi {
     HttpApp.collectM { case req @ Method.POST -> `apiRoot` =>
       handlePostRequest(req).mapBoth(
         cause =>
+          // TODO: Make this cleaner
           HttpError.InternalServerError(cause =
             Some(new Throwable(cause.toString))
           ),
@@ -46,24 +60,29 @@ object WebhookApi {
     case Some(body) =>
       for {
         pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-        _ <- performEventAction(pullRequestEvent)
-      } yield pullRequestEvent
+        _ <- performEventAction(pullRequestEvent).tapError(err =>
+          log.error(s"${err.toString}")
+        )
+      } yield pullRequestEvent // TODO: Should not be returning the pull request event
     case None => ZIO.fail("Did not receive a request body")
 
   }
 
   def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
-      case PullRequestAction.Opened      => ZIO.succeed("open")
-      case PullRequestAction.Synchronize => openedEvent(event).map(_.toString)
-      case PullRequestAction.Closed      => deleteNamespace(event)
+      case PullRequestAction.Opened => openedEvent(event).map(_.toString)
+      case PullRequestAction.Synchronize =>
+        openedEvent(event).map(
+          _.toString
+        ) // TODO: This should be its own action
+      case PullRequestAction.Closed => deleteNamespace(event)
       case PullRequestAction.Unknown(actionType) =>
         log.warn(s"got unknown action type: $actionType")
     }
   }
 
   private def openedEvent(event: PullRequestEvent) = for {
-    mergeSuccessful <- gitCloneAndMerge(
+    repoDirectory <- gitCloneAndMerge(
       event.pullRequest.base.repo.owner.login,
       event.pullRequest.head.repo.name,
       event.pullRequest.head.ref,
@@ -73,11 +92,16 @@ object WebhookApi {
       event.pullRequest.number,
       event.pullRequest.base.repo.name
     )
-    configLayer = ZConfig.fromPropertiesFile(s"${mergeSuccessful.getAbsolutePath}/.watcher.conf", RepoConfig.configDescriptor)
+    configLayer = ZConfig.fromPropertiesFile(
+      repoDirectory./(".watcher.conf").toString(),
+      RepoConfig.configDescriptor
+    )
     templateService <- ZIO.service[template.Template.Service]
-    output <- templateService.templateManifests(mergeSuccessful).inject(configLayer, Blocking.live)
-    applied <- applyFile(mergeSuccessful, nsName)
-    _ <- cleanupTempDir(mergeSuccessful)
+    templatedManifests <- templateService
+      .templateManifests(repoDirectory)
+      .inject(configLayer, Blocking.live)
+    applied <- applyFile(templatedManifests, nsName)
+    _ <- cleanupTempDir(repoDirectory)
   } yield applied
 
   private def gitClone(repo: String, branch: String) =
@@ -85,18 +109,17 @@ object WebhookApi {
 
   private def gitMerge(target: String) = Command("git", "merge", target)
 
-  private def createRepoCloneDir(repo: String) = ZIO.effect {
-    Files.createTempDirectory(s"pr-$repo").toFile
-  }
+  private def createRepoCloneDir(repo: String) =
+    Files.createTempDirectory(Some(s"pr-$repo-"), Seq.empty)
 
-  private def applyFile(repoDir: File, namespaceName: String) = for {
+  private def applyFile(repoDir: ZFPath, namespaceName: String) = for {
     exitCode <- Command(
       "kubectl",
       "apply",
       "-n",
       namespaceName,
       "-f",
-      s"${repoDir.getAbsolutePath}/.watcher.conf/basic.yaml"
+      repoDir.toString()
     ).run
   } yield exitCode
 
@@ -106,18 +129,18 @@ object WebhookApi {
       repo: String,
       branch: String,
       target: String
-  ): ZIO[Blocking with Console, Throwable, File] = for {
+  ): ZIO[Blocking with Console, Throwable, ZFPath] = for {
     workingDir <- createRepoCloneDir(s"$organization-$repo")
     _ <- gitClone(s"https://github.com/$organization/$repo", branch)
-      .workingDirectory(workingDir)
+      .workingDirectory(workingDir.toFile)
       .run
-    repoDir = new File(s"${workingDir.getAbsolutePath}/$repo")
-
-    _ <- gitMerge(target).workingDirectory(repoDir).run.exitCode
+    repoDir = workingDir./(repo)
+    _ <- gitMerge(target).workingDirectory(repoDir.toFile).run.exitCode
   } yield repoDir
 
-  def cleanupTempDir(dir: File): RIO[Blocking, Boolean] = {
-    effectBlocking(dir.delete())
+  // TODO: Does zio-nio have a helper for this?
+  def cleanupTempDir(dir: ZFPath): RIO[Blocking, Boolean] = {
+    effectBlocking(dir.toFile.delete())
   }
 
   private def createPRNamespace(

@@ -10,6 +10,7 @@ import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import zio.logging._
 import zio.clock.Clock
 import zio.config.{ZConfig, getConfig}
+import template.Template
 
 object Main extends App {
 
@@ -21,7 +22,10 @@ object Main extends App {
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
-    val config = ZConfig.fromPropertiesFile("watcher.conf", ApplicationConfig.configDescriptor)
+    val config = ZConfig.fromPropertiesFile(
+      "watcher.conf",
+      ApplicationConfig.configDescriptor
+    )
 
     val logger = Logging.console(
       LogLevel.Info,
@@ -39,7 +43,8 @@ object Main extends App {
         EventLoopGroup.auto(5),
         Clock.live,
         logger,
-        config
+        config,
+        Template.live
       )
       .exitCode
   }

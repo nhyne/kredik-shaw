@@ -2,12 +2,14 @@ package template
 
 import zio.process._
 
-import java.io.File
 import zio._
-import zio.blocking.{Blocking, effectBlocking}
-import zio.config._
+import zio.blocking.Blocking
 import zio.nio.channels.FileChannel
+import zio.nio.core.file.Path
 import zio.nio.file.Files
+
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermissions
 
 object Template {
 
@@ -24,38 +26,54 @@ object Template {
     case object KustomizeHelm extends TemplateCommand
   }
 
-  private def kustomizeCommand(dir: File) = Command("kustomize", "build", dir.getAbsolutePath)
-  private def template(dir: File, command: TemplateCommand) = command match {
-    case TemplateCommand.Helm => ???
-    case TemplateCommand.Kustomize => kustomizeCommand(dir).string
-    case TemplateCommand.KustomizeHelm => ???
-  }
+  // TODO: Would be nicer if this was file/Path based instead of string
+  private def kustomizeCommand(dir: Path) = dir.toAbsolutePath.map(path =>
+    Command("kustomize", "build", path.toString())
+  )
+  private def kustomizeCommand(dir: String) = Command("kustomize", "build", dir)
+  private def template(dir: Path, config: RepoConfig) =
+    config.templateCommand match {
+      case TemplateCommand.Helm => ???
+      case TemplateCommand.Kustomize =>
+        kustomizeCommand(dir./(config.resourceFolder.getName)).flatMap(
+          command => command.string
+        )
+      case TemplateCommand.KustomizeHelm => ???
+    }
 
   type TemplateService = Has[Service]
 
   val live: ZLayer[Any, Throwable, TemplateService] = {
     ZLayer.succeed {
       new Service {
-        override def templateManifests(repoFolder: File): ZIO[Has[RepoConfig] with Blocking, Throwable, File] = {
-
-
+        override def templateManifests(
+            repoFolder: Path
+        ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path] = {
           for {
             config <- ZIO.service[RepoConfig]
-            templateOutput <- template(repoFolder, config.templateCommand)
-            tempFile <- Files.createTempFile(prefix = Some("templatedOutput"), fileAttributes = Seq())
-            _ <- FileChannel.open(tempFile).use { channel =>
-              channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
+            templateOutput <- template(repoFolder, config)
+            tempFilePath <- Files.createTempFile(
+              prefix = Some("templatedOutput"),
+              fileAttributes = Seq(
+                PosixFilePermissions.asFileAttribute(
+                  PosixFilePermissions.fromString("rw-rw-rw-")
+                )
+              )
+            )
+            _ <- FileChannel.open(tempFilePath, StandardOpenOption.WRITE).use {
+              channel =>
+                channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
             }
-          } yield new File("abd")
+          } yield tempFilePath
         }
       }
     }
   }
 
   trait Service {
-    def templateManifests(dir: File): ZIO[Has[RepoConfig] with Blocking, Throwable, File]
+    def templateManifests(
+        dir: Path
+    ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path]
   }
 
-
 }
-

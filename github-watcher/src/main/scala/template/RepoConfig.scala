@@ -10,6 +10,6 @@ object RepoConfig {
 }
 
 final case class RepoConfig(
-                             resourceFolder: File,
-                             templateCommand: TemplateCommand
-                           )
+    resourceFolder: File,
+    templateCommand: TemplateCommand
+)

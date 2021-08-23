@@ -7,5 +7,5 @@ object ApplicationConfig {
 }
 
 final case class ApplicationConfig(
-                              port: Int
-                              )
+    port: Int
+)
