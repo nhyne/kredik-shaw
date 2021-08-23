@@ -22,6 +22,7 @@ object Main extends App {
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
+    // TODO: Should be coming out of resources dir
     val config = ZConfig.fromPropertiesFile(
       "watcher.conf",
       ApplicationConfig.configDescriptor

@@ -53,6 +53,7 @@ object WebhookApi {
 
   val server: Server[ServerEnv, HttpError] =
     Server.port(PORT) ++ Server.app(apiServer) ++ Server.maxRequestSize(
+      // This is currently arbitrary. Would like to switch to streams/chunks
       100 * 1024
     )
 
