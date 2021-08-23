@@ -5,20 +5,15 @@ import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
 import zio.process.Command
 import com.coralogix.zio.k8s.client.{K8sFailure, NotFound => K8sNotFound}
-import com.coralogix.zio.k8s.client.v1.namespaces.{
-  Namespaces,
-  create,
-  delete,
-  get
-}
+import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, delete, get}
 import com.coralogix.zio.k8s.model.core.v1.Namespace
-import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
-  DeleteOptions,
-  ObjectMeta,
-  Status => K8sStatus
-}
+import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{DeleteOptions, ObjectMeta, Status => K8sStatus}
+import template.RepoConfig
 import zio.json._
 import zio.logging._
+import zio.config._
+import template.Template.TemplateService
+import zio.magic._
 
 import java.nio.file.Files
 import java.io.File
@@ -26,7 +21,7 @@ import java.io.File
 object WebhookApi {
 
   private val PORT = 8090
-  private type ServerEnv = Console with Blocking with Namespaces with Logging
+  private type ServerEnv = Console with Blocking with Namespaces with Logging with TemplateService
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
@@ -78,6 +73,9 @@ object WebhookApi {
       event.pullRequest.number,
       event.pullRequest.base.repo.name
     )
+    configLayer = ZConfig.fromPropertiesFile(s"${mergeSuccessful.getAbsolutePath}/.watcher.conf", RepoConfig.configDescriptor)
+    templateService <- ZIO.service[template.Template.Service]
+    output <- templateService.templateManifests(mergeSuccessful).inject(configLayer, Blocking.live)
     applied <- applyFile(mergeSuccessful, nsName)
     _ <- cleanupTempDir(mergeSuccessful)
   } yield applied
@@ -114,6 +112,7 @@ object WebhookApi {
       .workingDirectory(workingDir)
       .run
     repoDir = new File(s"${workingDir.getAbsolutePath}/$repo")
+
     _ <- gitMerge(target).workingDirectory(repoDir).run.exitCode
   } yield repoDir
 
