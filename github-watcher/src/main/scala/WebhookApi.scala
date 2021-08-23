@@ -1,29 +1,49 @@
+import com.coralogix.zio.k8s.client.model.PropagationPolicy
 import zhttp.service._
 import zhttp.http._
 import zio._
 import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
 import zio.process.Command
-import com.coralogix.zio.k8s.client.K8sFailure
-import com.coralogix.zio.k8s.client.v1.namespaces.{Namespaces, create, get}
+import com.coralogix.zio.k8s.client.{K8sFailure, NotFound => K8sNotFound}
+import com.coralogix.zio.k8s.client.v1.namespaces.{
+  Namespaces,
+  create,
+  delete,
+  get
+}
 import com.coralogix.zio.k8s.model.core.v1.Namespace
-import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.ObjectMeta
+import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
+  DeleteOptions,
+  ObjectMeta,
+  Status => K8sStatus
+}
+import template.RepoConfig
 import zio.json._
-
-import java.nio.file.Files
-import java.io.File
+import zio.logging._
+import zio.config._
+import template.Template.TemplateService
+import zio.clock.Clock
+import zio.magic._
+import zio.nio.core.file.{Path => ZFPath}
+import zio.nio.file.Files
 
 object WebhookApi {
 
   private val PORT = 8090
+  private type ServerEnv = Console
+    with Blocking
+    with Namespaces
+    with Logging
+    with TemplateService
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
-  private val apiServer
-      : HttpApp[Console with Blocking with Namespaces, HttpError] =
+  private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM { case req @ Method.POST -> `apiRoot` =>
       handlePostRequest(req).mapBoth(
         cause =>
+          // TODO: Make this cleaner
           HttpError.InternalServerError(cause =
             Some(new Throwable(cause.toString))
           ),
@@ -31,41 +51,59 @@ object WebhookApi {
       )
     }
 
-  val server: Server[Console with Blocking with Namespaces, HttpError] =
-    Server.port(PORT) ++ Server.app(apiServer) ++ Server.maxRequestSize(100 * 1024)
+  val server: Server[ServerEnv, HttpError] =
+    Server.port(PORT) ++ Server.app(apiServer) ++ Server.maxRequestSize(
+      // This is currently arbitrary. Would like to switch to streams/chunks
+      100 * 1024
+    )
 
   def handlePostRequest(request: Request) = request.getBodyAsString match {
 
     case Some(body) =>
       for {
         pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-        _ <- performEventAction(pullRequestEvent)
-      } yield pullRequestEvent
+        _ <- performEventAction(pullRequestEvent).tapError(err =>
+          log.error(s"${err.toString}")
+        )
+      } yield pullRequestEvent // TODO: Should not be returning the pull request event
     case None => ZIO.fail("Did not receive a request body")
 
   }
 
-  def performEventAction(event: PullRequestEvent) = {
+  def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
-      case PullRequestAction.Opened      => ZIO.succeed("open")
-      case PullRequestAction.Synchronize => openedEvent(event).map(_.toString)
-      case PullRequestAction.Closed      => ZIO.succeed("close")
+      case PullRequestAction.Opened => openedEvent(event).map(_.toString)
+      case PullRequestAction.Synchronize =>
+        openedEvent(event).map(
+          _.toString
+        ) // TODO: This should be its own action
+      case PullRequestAction.Closed => deleteNamespace(event)
+      case PullRequestAction.Unknown(actionType) =>
+        log.warn(s"got unknown action type: $actionType")
     }
   }
 
   private def openedEvent(event: PullRequestEvent) = for {
-    mergeSuccessful <- gitCloneAndMerge(
+    repoDirectory <- gitCloneAndMerge(
       event.pullRequest.base.repo.owner.login,
       event.pullRequest.head.repo.name,
       event.pullRequest.head.ref,
       event.pullRequest.base.ref
     )
-    ns <- createPRNamespace(
+    nsName <- createPRNamespace(
       event.pullRequest.number,
       event.pullRequest.base.repo.name
     )
-    applied <- applyFile(mergeSuccessful, ns)
-    _ <- cleanupTempDir(mergeSuccessful)
+    configLayer = ZConfig.fromPropertiesFile(
+      repoDirectory./(".watcher.conf").toString(),
+      RepoConfig.configDescriptor
+    )
+    templateService <- ZIO.service[template.Template.Service]
+    templatedManifests <- templateService
+      .templateManifests(repoDirectory)
+      .inject(configLayer, Blocking.live)
+    applied <- applyFile(templatedManifests, nsName)
+    _ <- cleanupTempDir(repoDirectory)
   } yield applied
 
   private def gitClone(repo: String, branch: String) =
@@ -73,18 +111,17 @@ object WebhookApi {
 
   private def gitMerge(target: String) = Command("git", "merge", target)
 
-  private def createRepoCloneDir(repo: String) = ZIO.effect {
-    Files.createTempDirectory(s"pr-$repo").toFile
-  }
+  private def createRepoCloneDir(repo: String) =
+    Files.createTempDirectory(Some(s"pr-$repo-"), Seq.empty)
 
-  private def applyFile(repoDir: File, namespace: Namespace) = for {
+  private def applyFile(repoDir: ZFPath, namespaceName: String) = for {
     exitCode <- Command(
       "kubectl",
       "apply",
       "-n",
-      namespace.metadata.flatMap(_.name).getOrElse(""),
+      namespaceName,
       "-f",
-      s"${repoDir.getAbsolutePath}/.watcher.conf/basic.yaml"
+      repoDir.toString()
     ).run
   } yield exitCode
 
@@ -94,35 +131,69 @@ object WebhookApi {
       repo: String,
       branch: String,
       target: String
-  ): ZIO[Blocking with Console, Throwable, File] = for {
+  ): ZIO[Blocking with Console, Throwable, ZFPath] = for {
     workingDir <- createRepoCloneDir(s"$organization-$repo")
     _ <- gitClone(s"https://github.com/$organization/$repo", branch)
-      .workingDirectory(workingDir)
+      .workingDirectory(workingDir.toFile)
       .run
-    repoDir = new File(s"${workingDir.getAbsolutePath}/$repo")
-    _ <- gitMerge(target).workingDirectory(repoDir).run.exitCode
+    repoDir = workingDir./(repo)
+    _ <- gitMerge(target).workingDirectory(repoDir.toFile).run.exitCode
   } yield repoDir
 
-  def cleanupTempDir(dir: File): RIO[Blocking, Boolean] = {
-    effectBlocking(dir.delete())
+  // TODO: Does zio-nio have a helper for this?
+  def cleanupTempDir(dir: ZFPath): RIO[Blocking, Boolean] = {
+    effectBlocking(dir.toFile.delete())
   }
 
-  def createPRNamespace(
+  private def createPRNamespace(
       prNumber: Int,
       repo: String
-  ): ZIO[Namespaces, K8sFailure, Namespace] = {
-    val namespaceName = s"$repo-pr-$prNumber"
-    val prNamespace = Namespace(metadata =
-      ObjectMeta(
-        name = Some(namespaceName)
-      )
-    )
-    for {
-      ns <- get(namespaceName).foldM(
-        _ => create(prNamespace),
+  ): ZIO[Namespaces, K8sFailure, String] = {
+    val (nsName, prNamespace) = namespaceObject(prNumber, repo)
+    get(nsName)
+      .foldM(
+        {
+          case K8sNotFound => create(prNamespace)
+          case e           => ZIO.fail(e)
+        },
         success => ZIO.succeed(success)
       )
-    } yield ns
+      .map(_ => nsName)
+  }
+
+  private def namespaceName(prNumber: Int, repo: String): String =
+    s"$repo-pr-$prNumber"
+  private def namespaceObject(
+      prNumber: Int,
+      repo: String
+  ): (String, Namespace) = {
+    val nsName = namespaceName(prNumber, repo)
+    (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))
+  }
+
+  // TODO: Have an error with deleting namespaces (Deserialization error)
+  //  The actual namespace does get deleted but we're logging an error + returning 500
+  def deleteNamespace(event: PullRequestEvent) = {
+    val nsName = namespaceName(event.number, event.pullRequest.base.repo.name)
+    delete(
+      nsName,
+      DeleteOptions(propagationPolicy = "Background"),
+      propagationPolicy = Some(PropagationPolicy.Background)
+    ).foldM(
+      {
+        case K8sNotFound =>
+          log.warn(
+            s"attempting to delete namespace: $nsName that does not exist"
+          ) *> ZIO.succeed(
+            K8sStatus(code = 200, message = s"namespace $nsName did not exist")
+          )
+        case f =>
+          log.warn(s"failed to delete ns: $nsName with error: $f") *> ZIO.fail(
+            f
+          )
+      },
+      status => ZIO.succeed(status)
+    )
   }
 
   final case class PullRequestEvent(
@@ -172,12 +243,14 @@ object WebhookApi {
 
     case object Closed extends PullRequestAction
 
+    final case class Unknown(`type`: String) extends PullRequestAction
+
     implicit val prActionDecoder: JsonDecoder[PullRequestAction] =
       JsonDecoder[String].map {
         case "opened"      => Opened
         case "synchronize" => Synchronize
         case "closed"      => Closed
-        case _             => ???
+        case actionType    => Unknown(actionType)
       }
   }
 
