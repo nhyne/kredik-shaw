@@ -1,3 +1,4 @@
+import com.coralogix.zio.k8s.client.model.PropagationPolicy
 import zhttp.service._
 import zhttp.http._
 import zio._
@@ -169,9 +170,15 @@ object WebhookApi {
     (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))
   }
 
+  // TODO: Have an error with deleting namespaces (Deserialization error)
+  //  The actual namespace does get deleted but we're logging an error + returning 500
   def deleteNamespace(event: PullRequestEvent) = {
     val nsName = namespaceName(event.number, event.pullRequest.base.repo.name)
-    delete(nsName, DeleteOptions()).foldM(
+    delete(
+      nsName,
+      DeleteOptions(propagationPolicy = "Background"),
+      propagationPolicy = Some(PropagationPolicy.Background)
+    ).foldM(
       {
         case K8sNotFound =>
           log.warn(
