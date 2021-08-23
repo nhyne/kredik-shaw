@@ -67,7 +67,6 @@ object WebhookApi {
         )
       } yield pullRequestEvent // TODO: Should not be returning the pull request event
     case None => ZIO.fail("Did not receive a request body")
-
   }
 
   def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
@@ -100,7 +99,7 @@ object WebhookApi {
     )
     templateService <- ZIO.service[template.Template.Service]
     templatedManifests <- templateService
-      .templateManifests(repoDirectory)
+      .templateManifests(repoDirectory, nsName)
       .inject(configLayer, Blocking.live)
     applied <- applyFile(templatedManifests, nsName)
     _ <- cleanupTempDir(repoDirectory)

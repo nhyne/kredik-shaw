@@ -47,11 +47,14 @@ object Template {
     ZLayer.succeed {
       new Service {
         override def templateManifests(
-            repoFolder: Path
+            repoFolder: Path,
+            namespaceName: String
         ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path] = {
           for {
             config <- ZIO.service[RepoConfig]
-            templateOutput <- template(repoFolder, config)
+            templateOutput <- template(repoFolder, config).map(
+              substituteNamespace(_, namespaceName)
+            )
             tempFilePath <- Files.createTempFile(
               prefix = Some("templatedOutput"),
               fileAttributes = Seq(
@@ -70,9 +73,17 @@ object Template {
     }
   }
 
+  private val NAMESPACE_SUBSTITUTION = "WATCHER_NS_NAME"
+  // TODO: This needs to be better
+  //    It would be better to provide a case class of fields that are able to be substituted?
+  //    Or even just doing it in parallel for all files in the `.watcher` directory?
+  private def substituteNamespace(manifests: String, namespaceName: String) =
+    manifests.replace(NAMESPACE_SUBSTITUTION, namespaceName)
+
   trait Service {
     def templateManifests(
-        dir: Path
+        repoFolder: Path,
+        namespaceName: String
     ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path]
   }
 
