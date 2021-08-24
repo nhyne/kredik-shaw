@@ -83,7 +83,7 @@ object WebhookApi {
   }
 
   private def openedEvent(event: PullRequestEvent) = for {
-    (repoDirectory, gitRev) <- gitCloneAndMerge(
+    repoDirectory <- gitCloneAndMerge(
       event.pullRequest.base.repo.owner.login,
       event.pullRequest.head.repo.name,
       event.pullRequest.head.ref,
@@ -99,7 +99,7 @@ object WebhookApi {
     )
     templateService <- ZIO.service[template.Template.Service]
     templatedManifests <- templateService
-      .templateManifests(repoDirectory, nsName, gitRev)
+      .templateManifests(repoDirectory, nsName, event.pullRequest.head.sha)
       .inject(configLayer, Blocking.live)
     applied <- applyFile(templatedManifests, nsName)
     _ <- cleanupTempDir(repoDirectory)
@@ -113,8 +113,6 @@ object WebhookApi {
 
   private def createRepoCloneDir(repo: String) =
     Files.createTempDirectory(Some(s"pr-$repo-"), Seq.empty)
-
-  private val gitRevParse = Command("git", "rev-parse", "HEAD")
 
   private def applyFile(repoDir: ZFPath, namespaceName: String) = for {
     exitCode <- Command(
@@ -133,15 +131,14 @@ object WebhookApi {
       repo: String,
       branch: String,
       target: String
-  ): ZIO[Blocking with Console, Throwable, (ZFPath, String)] = for {
+  ): ZIO[Blocking with Console, Throwable, ZFPath] = for {
     workingDir <- createRepoCloneDir(s"$organization-$repo")
     _ <- gitClone(s"https://github.com/$organization/$repo", branch)
       .workingDirectory(workingDir.toFile)
       .run
     repoDir = workingDir./(repo)
-    gitRev <- gitRevParse.workingDirectory(repoDir.toFile).string
     _ <- gitMerge(target).workingDirectory(repoDir.toFile).run.exitCode
-  } yield (repoDir, gitRev)
+  } yield repoDir
 
   // TODO: Does zio-nio have a helper for this?
   def cleanupTempDir(dir: ZFPath): RIO[Blocking, Boolean] = {
