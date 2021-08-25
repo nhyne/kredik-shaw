@@ -1,11 +1,14 @@
 package template
 
-import template.RepoConfig.walkDependencies
+import template.RepoConfig.{DependencyConverter, walkDependencies}
 import template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
 import Assertion.{hasSameElementsDistinct, isNull}
+import zio.{Has, URLayer}
 import zio.test.environment.TestEnvironment
+import zio.test.mock._
+import zio._
 
 import java.io.File
 import scala.collection.immutable.Set
@@ -26,4 +29,15 @@ object RepoConfigSpec extends DefaultRunnableSpec {
         assertM(walkDependencies(repoConfig))(equalTo(Set(repoConfig)))
       }
     )
+}
+
+
+object DependencyConverterMock extends Mock[RepoConfig.DependencyConverter] {
+  object DependencyToRepoConfig extends Effect[Dependency, Throwable, RepoConfig]
+
+  val compose: URLayer[Has[Proxy], DependencyConverter] = ZIO.service[Proxy].map { proxy =>
+    new DependencyConverter.Service {
+      override def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig] = proxy(DependencyToRepoConfig, dependency)
+    }
+  }.toLayer
 }

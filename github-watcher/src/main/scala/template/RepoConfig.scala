@@ -14,7 +14,6 @@ object RepoConfig {
   object DependencyWalker {
     trait Service {
       def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]]
-      def dependencyToRepo(dep: Dependency): Task[RepoConfig]
     }
 
     // TODO: Want to pull in the functions in the parent object, just not sure about needing to mock all of them in a test or just the Dependency -> RepoConfig
@@ -24,7 +23,6 @@ object RepoConfig {
         // hoping that a starting point doesn't also end up as its own dep?
         override def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]] = ???
 
-        override def dependencyToRepo(dep: Dependency): Task[RepoConfig] = ???
       }
     )
 
@@ -77,6 +75,19 @@ object RepoConfig {
       if (newUnseenDeps.isEmpty) ZIO.succeed(deps)
       else walkDependencies(newUnseenDeps, newSeenDeps, deps)
   } yield abc
+
+  type DependencyConverter = Has[DependencyConverter.Service]
+  object DependencyConverter {
+    trait Service {
+      def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig]
+    }
+
+    val live = ZLayer.succeed(
+      new Service {
+        override def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig] = ???
+      }
+    )
+  }
 
   // TODO: Provide a real version of this function and use this version (maybe with a map lookup?) as a test implementation
   // TODO: move this to a layer by itself. It will make testing easier and it only _slightly_ relates to the walkDeps function above
