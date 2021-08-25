@@ -1,4 +1,4 @@
-val zioVersion = "1.0.7"
+val zioVersion = "1.0.9"
 val zioConfigVersion = "1.0.6"
 val zioLoggingVersion = "0.5.11"
 val scala_2_13 = "2.13.6"
@@ -27,7 +27,7 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
     ),
     libraryDependencies ++=
       Seq(
-        "dev.zio" %% "zio" % "1.0.9",
+        "dev.zio" %% "zio" % zioVersion,
         "dev.zio" %% "zio-interop-cats" % "3.1.1.0",
         "dev.zio" %% "zio-process" % "0.5.0",
         "com.coralogix" %% "zio-k8s-client" % "1.3.3",
@@ -46,8 +46,11 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "com.softwaremill.sttp.client3" %% "zio-json" % sttpClientVersion,
         "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpClientVersion,
         "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % sttpClientVersion,
-        "io.d11" %% "zhttp" % "1.0.0.0-RC17"
-      )
+        "io.d11" %% "zhttp" % "1.0.0.0-RC17",
+        "dev.zio"                       %% "zio-test"                      % zioVersion       % Test,
+        "dev.zio"                       %% "zio-test-sbt"                  % zioVersion       % Test
+      ),
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
 lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
   .settings(

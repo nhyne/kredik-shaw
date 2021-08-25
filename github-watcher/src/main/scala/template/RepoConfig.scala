@@ -1,28 +1,19 @@
 package template
 
 import Template.TemplateCommand
-import sttp.model.Uri
 import zio._
-import zio.config.ConfigDescriptor
-import zio.config.magnolia.DeriveConfigDescriptor.descriptor
-import zio.config.magnolia.Descriptor
+import zio.config._
+import zio.config.derivation.describe
+import zio.config.magnolia.DeriveConfigDescriptor
+
 import scala.collection.immutable.Set
 import scala.annotation.tailrec
-
 import java.io.File
 
 object RepoConfig {
-  implicit val repoDescriptor: Descriptor[RepoConfig] = Descriptor(
-    descriptor[RepoConfig]
-  )
-  implicit val dependencyDescriptor: Descriptor[Dependency] = Descriptor(
-    descriptor[Dependency]
-  )
 
-  val repoConfigDescriptor: ConfigDescriptor[RepoConfig] =
-    descriptor[RepoConfig]
-  val dependencyConfigDescriptor: ConfigDescriptor[Dependency] =
-    descriptor[Dependency]
+  // hoping that a starting point doesn't also end up as its own dep?
+  def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]] = walkDependencies(startingConfig.dependencies.getOrElse(Set.empty), Set.empty, Set(startingConfig))
 
 //  val dependencyConfigDescriptor = descriptor[Dependency]
 
@@ -74,14 +65,16 @@ object RepoConfig {
   } yield abc
 
   def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig] = {
-    // clone repo into temp Dir
-    // read in its dependencies
-    // clone those deps as well
-    // continue process until all deps are downloaded
-    ???
+    dependency.branch match {
+      case Some(_) => Task.succeed(RepoConfig(new File("bbb"), TemplateCommand.Kustomize, Some(Set(Dependency("nhyne.dev", None)))))
+      case None => Task.succeed(RepoConfig(new File("aaa"), TemplateCommand.Helm, None))
+    }
   }
+
+  val repoConfigDescriptor: ConfigDescriptor[RepoConfig] = DeriveConfigDescriptor.descriptor[RepoConfig]
 }
 
+@describe("this config is for a repo watcher")
 final case class RepoConfig(
     resourceFolder: File,
     templateCommand: TemplateCommand,
@@ -90,8 +83,10 @@ final case class RepoConfig(
     dependencies: Option[Set[Dependency]]
 )
 
-// This is a graph of deps
+// TODO: Would be nice if this used refinement types to perform some validations
+//    https://zio.github.io/zio-config/docs/refined/refined_index
+@describe("this config is for a dependency of a repo")
 final case class Dependency(
-    repoUrl: Uri,
+    repoUrl: String,
     branch: Option[String]
 )
