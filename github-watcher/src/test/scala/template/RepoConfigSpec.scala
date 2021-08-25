@@ -8,14 +8,22 @@ import Assertion.{hasSameElementsDistinct, isNull}
 import zio.test.environment.TestEnvironment
 
 import java.io.File
+import scala.collection.immutable.Set
 
 object RepoConfigSpec extends DefaultRunnableSpec {
   def spec: ZSpec[TestEnvironment, Any] =
     suite("repo config")(
       testM("repo has no dependencies") {
         val repoConfig = RepoConfig(new File("ccc"), TemplateCommand.Helm, None)
-        val repoConfigs = walkDependencies(repoConfig)
-        assertM(repoConfigs)(equalTo(Set(repoConfig)))
+        assertM(walkDependencies(repoConfig))(equalTo(Set(repoConfig)))
+      },
+      testM("repo has one dependency") {
+        val repoConfig = RepoConfig(new File("abc"), TemplateCommand.Helm, Some(Set(Dependency("somewhere.test", None))))
+        assertM(walkDependencies(repoConfig))(equalTo(Set(repoConfig, RepoConfig(new File("aaa"), TemplateCommand.Helm, None))))
+      },
+      testM("circular dependency terminates") {
+        val repoConfig = RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize, Some(Set(Dependency("circular", Some("circular")))))
+        assertM(walkDependencies(repoConfig))(equalTo(Set(repoConfig)))
       }
     )
 }

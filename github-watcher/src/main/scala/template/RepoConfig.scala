@@ -7,15 +7,30 @@ import zio.config.derivation.describe
 import zio.config.magnolia.DeriveConfigDescriptor
 
 import scala.collection.immutable.Set
-import scala.annotation.tailrec
 import java.io.File
 
 object RepoConfig {
 
-  // hoping that a starting point doesn't also end up as its own dep?
-  def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]] = walkDependencies(startingConfig.dependencies.getOrElse(Set.empty), Set.empty, Set(startingConfig))
+  object DependencyWalker {
+    trait Service {
+      def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]]
+      def dependencyToRepo(dep: Dependency): Task[RepoConfig]
+    }
 
-//  val dependencyConfigDescriptor = descriptor[Dependency]
+    // TODO: Want to pull in the functions in the parent object, just not sure about needing to mock all of them in a test or just the Dependency -> RepoConfig
+    //    maybe the Dependency -> RepoConfig function could be its own service?
+    val live = ZLayer.succeed(
+      new Service {
+        // hoping that a starting point doesn't also end up as its own dep?
+        override def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]] = ???
+
+        override def dependencyToRepo(dep: Dependency): Task[RepoConfig] = ???
+      }
+    )
+
+  }
+
+  def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]] = walkDependencies(startingConfig.dependencies.getOrElse(Set.empty), Set.empty, Set(startingConfig))
 
   /* TODO: We want to walk the dependency graph and apply the watcher configs for each one
    * This is probably the most important part
@@ -25,8 +40,7 @@ object RepoConfig {
    * TODO: Make this tail recursive
    */
 
-//  @tailrec
-  def walkDependencies(
+  private def walkDependencies(
       unseenDeps: Set[Dependency],
       seenDeps: Set[Dependency],
       configs: Set[RepoConfig]
@@ -64,9 +78,12 @@ object RepoConfig {
       else walkDependencies(newUnseenDeps, newSeenDeps, deps)
   } yield abc
 
+  // TODO: Provide a real version of this function and use this version (maybe with a map lookup?) as a test implementation
+  // TODO: move this and the walk deps function to a layer
   def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig] = {
     dependency.branch match {
-      case Some(_) => Task.succeed(RepoConfig(new File("bbb"), TemplateCommand.Kustomize, Some(Set(Dependency("nhyne.dev", None)))))
+      case Some("circular") => Task.succeed(RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize, Some(Set(Dependency("circular", Some("circular"))))))
+      case Some(_) => ???
       case None => Task.succeed(RepoConfig(new File("aaa"), TemplateCommand.Helm, None))
     }
   }
