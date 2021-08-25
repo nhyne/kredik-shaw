@@ -79,7 +79,8 @@ object RepoConfig {
   } yield abc
 
   // TODO: Provide a real version of this function and use this version (maybe with a map lookup?) as a test implementation
-  // TODO: move this and the walk deps function to a layer
+  // TODO: move this to a layer by itself. It will make testing easier and it only _slightly_ relates to the walkDeps function above
+  //          realistically the walk deps function relies on this as an R
   def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig] = {
     dependency.branch match {
       case Some("circular") => Task.succeed(RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize, Some(Set(Dependency("circular", Some("circular"))))))
