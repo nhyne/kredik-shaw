@@ -53,22 +53,6 @@ lazy val `twilio-messenger` = (project in file("./twilio-messenger"))
   .settings(
     version := "0.0.1-SNAPSHOT",
     organization := "dev.nhyne",
-    Compile / mainClass := Some("Messenger"),
+    Compile / mainClass := Some("Main"),
     scalaVersion := scala_2_13,
-    libraryDependencies ++=
-      Seq(
-        "dev.zio" %% "zio" % zioVersion,
-        "dev.zio" %% "zio-logging" % "0.5.8",
-        //        "com.typesafe.scala-logging" %% "scala-logging" % "3.9.3",
-        //        "dev.zio" %% "zio-logging-slf4j-bridge" % "0.5.8",
-        "dev.zio" %% "zio-json" % "0.1.4",
-        "dev.zio" %% "zio-metrics" % "1.0.8",
-        "dev.zio" %% "zio-metrics-prometheus" % "1.0.8",
-        //        "dev.zio" %% "zio-telemetry" % "0.8.0",
-        "io.github.kitlangton" %% "zio-magic" % "0.2.2",
-        "io.d11" %% "zhttp" % "1.0.0.0-RC15",
-        "com.github.pureconfig" %% "pureconfig" % "0.14.1",
-        "com.softwaremill.sttp.client3" %% "core" % sttpClientVersion,
-        "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % sttpClientVersion
-      )
   )

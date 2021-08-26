@@ -1,139 +1,56 @@
-import UserService.UserService
-import zhttp.http._
-import zhttp.service._
-import zhttp.service.Server
-import zio._
-import zio.json._
-import zio.magic._
-import zio.logging._
 
-import java.util.UUID
-import scala.collection.mutable
-import scala.collection.mutable.HashMap
-
-case class Person(name: String)
-object Person {
-  implicit val decoder: JsonDecoder[Person] = DeriveJsonDecoder.gen[Person]
-  implicit val formatter: JsonEncoder[Person] = DeriveJsonEncoder.gen[Person]
-}
-
-case class NewUser(
-    firstName: String,
-    lastName: String,
-    email: String,
-    phoneNumber: String
-)
-
-object User {
-  implicit val decoder: JsonDecoder[User] = DeriveJsonDecoder.gen[User]
-  implicit val formatter: JsonEncoder[User] = DeriveJsonEncoder.gen[User]
-}
-
-case class User(
-    firstName: String,
-    lastName: String,
-    email: String,
-    phoneNumber: String,
-    uuid: UUID
-)
-
-object Messenger extends App {
-
-  val katherine = Person("katherine")
-
-  def doAPutUser(): ResponseM[UserService.UserService, HttpError] =
-    for {
-      a <-
-        RIO
-          .accessM[UserService.UserService](
-            _.get.insertUser(
-              NewUser(
-                firstName = "adam",
-                lastName = "johnson",
-                email = "email",
-                phoneNumber = "3456789"
-              )
-            )
-          )
-          .bimap(
-            _ => HttpError.NotImplemented("whooop error!"),
-            user => Response.text(s"$user")
-          )
-    } yield a
-
-  def doAGetUser(
-      userId: String
-  ): ResponseM[UserService.UserService with Logging, HttpError] =
-    for {
-      userUUID <-
-        ZIO
-          .fromTry(scala.util.Try(UUID.fromString(userId)))
-          .mapError(_ => HttpError.InternalServerError("bboooo"))
-      _ <- log.info("coooooooooooooool")
-      user <-
-        RIO
-          .accessM[UserService.UserService](_.get.getUserById(userUUID))
-          .bimap(
-            _ => HttpError.InternalServerError("boo"),
-            user => Response.jsonString(user.toJson)
-          )
-
-    } yield user
-
-  val app: Http[UserService with Logging, Throwable] =
-    Http.collectM {
-      case Method.GET -> Root / "json" =>
-        UIO(Response.jsonString(katherine.toJson))
-      case Method.GET -> Root / "zio" =>
-        doAPutUser()
-      case Method.GET -> Root / "users" / userId =>
-        doAGetUser(userId)
-    }
-
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
-    val logLayer = Logging.console(
-      logLevel = LogLevel.Info,
-      format = LogFormat.ColoredLogFormat()
-    ) >>> Logging.withRootLoggerName("my-component")
-
-    Server
-      .start(8090, app.silent)
-      .exitCode
-      .injectSome(
-        UserService.dummy,
-        logLayer
-      )
-  }
-}
-
-object UserService {
-  trait Service {
-    def getUserById(id: UUID): IO[Option[Nothing], User]
-    def insertUser(user: NewUser): Task[User]
+object Main {
+  def main(args: Array[String]): Unit = {
+    println("in main")
   }
 
-  type UserService = Has[Service]
+  // linked in user model
+  // should be able to model connections as well
+  // somewhat realistic
 
-  val dummy: ZLayer[Any, Nothing, Has[Service]] =
-    ZIO.succeed(DummyUserService()).toLayer
+  // the Seq here could be a linked list or a List which could have O(n) or O(1) runtime for accessing
+  final case class User(name: String, currentPosition: Position, connections: () => Set[User], jobHistory: Seq[Position], contactInfo: ContactInfo)
 
-  final case class DummyUserService() extends UserService.Service {
-    val userMap: mutable.HashMap[UUID, User] = mutable.HashMap.empty
 
-    override def getUserById(id: UUID) = ZIO.fromOption(userMap.get(id))
+  final case class ContactInfo(primaryEmail: String, primaryPhone: String, additionalEmails: Set[String], additionalPhoneNumbers: Set[String])
 
-    override def insertUser(user: NewUser): Task[User] =
-      ZIO.effect {
-        val uuid = UUID.randomUUID()
-        val userToInsert = User(
-          firstName = user.firstName,
-          lastName = user.lastName,
-          email = user.email,
-          phoneNumber = user.phoneNumber,
-          uuid = uuid
-        )
-        userMap.addOne((uuid, userToInsert))
-        userToInsert
-      }
+  /*
+  should do something liek
+  type Email = String
+  def apply(input: String): Either[E, Email]
+   */
+
+  final case class Position(jobTitle: String, jobDescription: String, company: Company, startTime: java.time.YearMonth, endTime: PositionEnd)
+
+  sealed trait PositionEnd
+  object PositionEnd {
+    final case class Ended(time: java.time.YearMonth)
+    case object Present
   }
+
+  final case class Company(name: String)
+
+  type NonEmptySet[A] = (A, Set[A])
+
+  /*
+  can be useful to know more about the java time abstractions -- should definitely do this
+  when creating data types, use a concrete collection
+    -- accept interfaces but provide concrete
+  investigate the use of new types -- new types with smart constructors
+   */
+
+
+
+  // recursively clear all user job history and all users who they are connected to
+  def clearHistory(user: User, depth: Int): User  = {
+    user.copy(jobHistory = Seq.empty, connections = if (depth == 0) user.connections else {
+      () => user.connections().map(clearHistory(_, depth - 1))
+    })
+  }
+
+  /*
+  new collections do not preserve the laziness of the
+
+   */
 }
+
