@@ -47,13 +47,13 @@ object Template {
     ZLayer.succeed {
       new Service {
         override def templateManifests(
+            repoConfig: RepoConfig,
             repoFolder: Path,
             namespaceName: String,
             gitRevision: String
-        ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path] = {
+        ): ZIO[Blocking, Throwable, Path] = {
           for {
-            config <- ZIO.service[RepoConfig]
-            templateOutput <- template(repoFolder, config)
+            templateOutput <- template(repoFolder, repoConfig)
               .map(
                 substituteNamespace(_, namespaceName)
               )
@@ -90,10 +90,11 @@ object Template {
 
   trait Service {
     def templateManifests(
+        repoConfig: RepoConfig,
         repoFolder: Path,
         namespaceName: String,
         gitRevision: String
-    ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path]
+    ): ZIO[Blocking, Throwable, Path]
   }
 
 }

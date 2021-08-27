@@ -39,6 +39,7 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "dev.zio" %% "zio-config" % zioConfigVersion,
         "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
         "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
+        "dev.zio" %% "zio-config-yaml" % zioConfigVersion,
         //"org.http4s" %% "http4s-async-http-client" % "0.23.0-RC1",
         "org.http4s" %% "http4s-blaze-client" % "0.23.0-RC1",
         "com.softwaremill.sttp.client3" %% "slf4j-backend" % sttpClientVersion,
@@ -47,8 +48,8 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpClientVersion,
         "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % sttpClientVersion,
         "io.d11" %% "zhttp" % "1.0.0.0-RC17",
-        "dev.zio"                       %% "zio-test"                      % zioVersion       % Test,
-        "dev.zio"                       %% "zio-test-sbt"                  % zioVersion       % Test
+        "dev.zio" %% "zio-test" % zioVersion % Test,
+        "dev.zio" %% "zio-test-sbt" % zioVersion % Test
       ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )

@@ -1,10 +1,16 @@
 package template
 
 import Template.TemplateCommand
+import dependencies.DependencyConverter.DependencyConverterService
 import zio._
+import zio.blocking.Blocking
 import zio.config._
 import zio.config.derivation.describe
 import zio.config.magnolia.DeriveConfigDescriptor
+import zio.nio.core.file.Path
+import zio.nio.file.Files
+import zio.process.{Command, CommandError}
+import zio.random.Random
 
 import scala.collection.immutable.Set
 import java.io.File
@@ -21,14 +27,28 @@ object RepoConfig {
     val live = ZLayer.succeed(
       new Service {
         // hoping that a starting point doesn't also end up as its own dep?
-        override def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]] = ???
+        override def walkDependencies(
+            startingConfig: RepoConfig
+        ): Task[Set[RepoConfig]] = ???
 
       }
     )
 
   }
 
-  def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]] = walkDependencies(startingConfig.dependencies.getOrElse(Set.empty), Set.empty, Set(startingConfig))
+  def walkDependencies(
+      startingConfig: RepoConfig,
+      startingRepoPath: Path,
+      workingDir: Path
+  ): ZIO[Blocking with Random with DependencyConverterService, Throwable, Map[
+    RepoConfig,
+    Path
+  ]] = walkDependencies(
+    workingDir,
+    startingConfig.dependencies.getOrElse(Set.empty),
+    Set.empty,
+    Map(startingConfig -> startingRepoPath)
+  )
 
   /* TODO: We want to walk the dependency graph and apply the watcher configs for each one
    * This is probably the most important part
@@ -36,13 +56,19 @@ object RepoConfig {
    *
    * TODO: Make this parallel
    * TODO: Make this tail recursive
+   * TODO: Make this apply the configs too?
+   *    Could change configs: Set[RepoConfig] into Map[RepoConfig] => File??
    */
 
   private def walkDependencies(
+      workingDir: Path,
       unseenDeps: Set[Dependency],
       seenDeps: Set[Dependency],
-      configs: Set[RepoConfig]
-  ): Task[Set[RepoConfig]] = for {
+      configs: Map[RepoConfig, Path]
+  ): ZIO[Blocking with Random with DependencyConverterService, Throwable, Map[
+    RepoConfig,
+    Path
+  ]] = for {
     newUnseenDepsRef <- Ref.make(Set.empty[Dependency])
     seenDepsRef <- Ref.make(seenDeps)
     processedConfigsRef <- Ref.make(configs)
@@ -51,13 +77,18 @@ object RepoConfig {
         seen <- seenDepsRef.get
         shouldProcess = !seen.contains(dep)
         maybeNewDependenciesToProcess <-
-          if (shouldProcess) dependencyToRepoConfig(dep).flatMap { rc =>
-            processedConfigsRef.get.flatMap { processedConfigs =>
-              processedConfigsRef
-                .set(processedConfigs + rc)
-                .flatMap(_ => ZIO.succeed(rc.dependencies))
+          if (shouldProcess)
+            ZIO.service[dependencies.DependencyConverter.Service].flatMap {
+              depService =>
+                depService.dependencyToRepoConfig(dep, workingDir).flatMap {
+                  case (rc, path) =>
+                    processedConfigsRef.get.flatMap { processedConfigs =>
+                      processedConfigsRef
+                        .set(processedConfigs + (rc -> path))
+                        .flatMap(_ => ZIO.succeed(rc.dependencies))
+                    }
+                }
             }
-          }
           else ZIO.none
         nextSeen = seen + dep
         _ <- seenDepsRef.set(nextSeen)
@@ -71,36 +102,13 @@ object RepoConfig {
     newUnseenDeps <- newUnseenDepsRef.get
     newSeenDeps <- seenDepsRef.get
     deps <- processedConfigsRef.get
-    abc <-
+    ret <-
       if (newUnseenDeps.isEmpty) ZIO.succeed(deps)
-      else walkDependencies(newUnseenDeps, newSeenDeps, deps)
-  } yield abc
+      else walkDependencies(workingDir, newUnseenDeps, newSeenDeps, deps)
+  } yield ret
 
-  type DependencyConverter = Has[DependencyConverter.Service]
-  object DependencyConverter {
-    trait Service {
-      def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig]
-    }
-
-    val live = ZLayer.succeed(
-      new Service {
-        override def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig] = ???
-      }
-    )
-  }
-
-  // TODO: Provide a real version of this function and use this version (maybe with a map lookup?) as a test implementation
-  // TODO: move this to a layer by itself. It will make testing easier and it only _slightly_ relates to the walkDeps function above
-  //          realistically the walk deps function relies on this as an R
-  def dependencyToRepoConfig(dependency: Dependency): Task[RepoConfig] = {
-    dependency.branch match {
-      case Some("circular") => Task.succeed(RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize, Some(Set(Dependency("circular", Some("circular"))))))
-      case Some(_) => ???
-      case None => Task.succeed(RepoConfig(new File("aaa"), TemplateCommand.Helm, None))
-    }
-  }
-
-  val repoConfigDescriptor: ConfigDescriptor[RepoConfig] = DeriveConfigDescriptor.descriptor[RepoConfig]
+  val repoConfigDescriptor: ConfigDescriptor[RepoConfig] =
+    DeriveConfigDescriptor.descriptor[RepoConfig]
 }
 
 @describe("this config is for a repo watcher")
@@ -109,11 +117,13 @@ final case class RepoConfig(
     templateCommand: TemplateCommand,
     // TODO: Issue here with implicits and this param
     // Believe it has to do with nested configs??
+    // TODO: This should really be a thunk
     dependencies: Option[Set[Dependency]]
 )
 
 // TODO: Would be nice if this used refinement types to perform some validations
 //    https://zio.github.io/zio-config/docs/refined/refined_index
+//    we actually really need a refinement type or we need something else to know what the name of the repo is
 @describe("this config is for a dependency of a repo")
 final case class Dependency(
     repoUrl: String,
