@@ -4,7 +4,7 @@ import zhttp.http._
 import zio._
 import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
-import zio.process.Command
+import zio.process.{Command, CommandError}
 import com.coralogix.zio.k8s.client.{K8sFailure, NotFound => K8sNotFound}
 import com.coralogix.zio.k8s.client.v1.namespaces.{
   Namespaces,
@@ -18,37 +18,41 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   ObjectMeta,
   Status => K8sStatus
 }
-import template.RepoConfig
+import dependencies.DependencyConverter.DependencyConverterService
+import template.{RepoConfig, Template}
 import zio.json._
 import zio.logging._
 import zio.config._
+import zio.config.yaml.YamlConfigSource
 import template.Template.TemplateService
 import zio.clock.Clock
 import zio.magic._
+import zio.duration.Duration.fromMillis
 import zio.nio.core.file.{Path => ZFPath}
 import zio.nio.file.Files
+import zio.random.Random
 
 object WebhookApi {
 
   private val PORT = 8090
-  private type ServerEnv = Console
-    with Blocking
+  private type ServerEnv = ZEnv
     with Namespaces
     with Logging
     with TemplateService
+    with DependencyConverterService
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
   private val apiServer: HttpApp[ServerEnv, HttpError] =
-    HttpApp.collectM { case req @ Method.POST -> `apiRoot` =>
-      handlePostRequest(req).mapBoth(
-        cause =>
-          // TODO: Make this cleaner
-          HttpError.InternalServerError(cause =
-            Some(new Throwable(cause.toString))
-          ),
-        body => Response.text(body.toString)
-      )
+    HttpApp.collectM {
+      case req @ Method.POST -> `apiRoot` =>
+        handlePostRequest(req).mapBoth(
+          cause =>
+            // TODO: Make this cleaner
+            HttpError
+              .InternalServerError(cause = Some(new Throwable(cause.toString))),
+          body => Response.text(body.toString)
+        )
     }
 
   val server: Server[ServerEnv, HttpError] =
@@ -57,17 +61,18 @@ object WebhookApi {
       100 * 1024
     )
 
-  def handlePostRequest(request: Request) = request.getBodyAsString match {
+  def handlePostRequest(request: Request) =
+    request.getBodyAsString match {
 
-    case Some(body) =>
-      for {
-        pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-        _ <- performEventAction(pullRequestEvent).tapError(err =>
-          log.error(s"${err.toString}")
-        )
-      } yield pullRequestEvent // TODO: Should not be returning the pull request event
-    case None => ZIO.fail("Did not receive a request body")
-  }
+      case Some(body) =>
+        for {
+          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
+          _ <- performEventAction(pullRequestEvent).tapError(err =>
+            log.error(s"${err.toString}")
+          )
+        } yield pullRequestEvent // TODO: Should not be returning the pull request event
+      case None => ZIO.fail("Did not receive a request body")
+    }
 
   def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
@@ -82,63 +87,119 @@ object WebhookApi {
     }
   }
 
-  private def openedEvent(event: PullRequestEvent) = for {
-    repoDirectory <- gitCloneAndMerge(
-      event.pullRequest.base.repo.owner.login,
-      event.pullRequest.head.repo.name,
-      event.pullRequest.head.ref,
-      event.pullRequest.base.ref
-    )
-    nsName <- createPRNamespace(
-      event.pullRequest.number,
-      event.pullRequest.base.repo.name
-    )
-    configLayer = ZConfig.fromPropertiesFile(
-      repoDirectory./(".watcher.conf").toString(),
-      RepoConfig.repoConfigDescriptor
-    )
-    templateService <- ZIO.service[template.Template.Service]
-    templatedManifests <- templateService
-      .templateManifests(repoDirectory, nsName, event.pullRequest.head.sha)
-      .inject(configLayer, Blocking.live)
-    applied <- applyFile(templatedManifests, nsName)
-    _ <- cleanupTempDir(repoDirectory)
-  } yield applied
+  private def openedEvent(event: PullRequestEvent): ZIO[Has[
+    Template.Service
+  ] with Blocking with Random with DependencyConverterService with Namespaces with Console with Clock with Logging, Object, Any] = {
 
-  private def gitClone(repo: String, branch: String) =
-    Command("git", "clone", repo, s"--branch=$branch")
+    Files
+      .createTempDirectoryManaged(
+        Some(s"pr-${event.pullRequest.base.repo.name}-"),
+        Seq.empty
+      )
+      .use { path =>
+        for {
+          repoDirectory <- gitCloneAndMerge(
+            path,
+            event.pullRequest.base.repo.owner.login,
+            event.pullRequest.head.repo.name,
+            event.pullRequest.head.ref,
+            event.pullRequest.base.ref
+          )
+          nsName <- createPRNamespace(
+            event.pullRequest.number,
+            event.pullRequest.base.repo.name
+          )
+          configSource <- ZIO.fromEither(
+            YamlConfigSource.fromYamlFile(
+              repoDirectory./(".watcher.yaml").toFile
+            )
+          )
+          initialRepoConfig <- ZIO.fromEither(
+            read(RepoConfig.repoConfigDescriptor.from(configSource))
+          )
+
+          depsWithPaths <- RepoConfig.walkDependencies(
+            initialRepoConfig,
+            repoDirectory,
+            event.pullRequest.head.sha,
+            path
+          )
+          templateService <- ZIO.service[template.Template.Service]
+          _ <- ZIO.foreach(depsWithPaths) {
+            case (repoConfig, (path, imageTag)) =>
+              for {
+                _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+                templatedManifests <- templateService.templateManifests(
+                  repoConfig,
+                  path,
+                  nsName,
+                  imageTag
+                )
+                exitCode <- applyFile(templatedManifests, nsName).exitCode
+              } yield repoConfig -> exitCode
+          }
+        } yield ()
+      }
+  }
+
+  // TODO: This is very similar to the clone in DependencyConverter
+  private def gitClone(repo: String, branch: String, path: ZFPath) =
+    Command(
+      "git",
+      "clone",
+      "--depth=2",
+      s"--branch=$branch",
+      repo,
+      path.toString()
+    )
 
   private def gitMerge(target: String) =
     Command("git", "merge", s"origin/$target")
 
-  private def createRepoCloneDir(repo: String) =
-    Files.createTempDirectory(Some(s"pr-$repo-"), Seq.empty)
-
-  private def applyFile(repoDir: ZFPath, namespaceName: String) = for {
-    exitCode <- Command(
+  private def applyFile(repoDir: ZFPath, namespaceName: String) =
+    Command(
       "kubectl",
       "apply",
       "-n",
       namespaceName,
       "-f",
       repoDir.toString()
-    ).run
-  } yield exitCode
+    )
 
   // TODO: Should do this work in a temp directory that gets cleaned up later
+  // TODO: These params are terrible, too many strings!
   def gitCloneAndMerge(
+      workingDir: ZFPath,
       organization: String,
       repo: String,
       branch: String,
       target: String
-  ): ZIO[Blocking with Console, Throwable, ZFPath] = for {
-    workingDir <- createRepoCloneDir(s"$organization-$repo")
-    _ <- gitClone(s"https://github.com/$organization/$repo", branch)
-      .workingDirectory(workingDir.toFile)
-      .run
-    repoDir = workingDir./(repo)
-    _ <- gitMerge(target).workingDirectory(repoDir.toFile).run.exitCode
-  } yield repoDir
+  ): ZIO[
+    Blocking with Random with Logging with Console with Clock,
+    Throwable,
+    ZFPath
+  ] =
+    for {
+      folderName <- random.nextUUID
+      folderPath = workingDir./(folderName.toString)
+      _ <- Files.createDirectory(folderPath)
+      cloneExit <- gitClone(
+        s"https://github.com/$organization/$repo",
+        branch,
+        folderPath
+      ).exitCode
+      mergeExit <- if (cloneExit.code > 0)
+        ZIO.fail(new Throwable(s"Could not clone repo: $repo"))
+      else
+        gitMerge(target).workingDirectory(folderPath.toFile).string
+      _ <- log.info(s"$mergeExit")
+      _ <-
+//        if (mergeExit.code > 0)
+//          ZIO.fail(
+//            new Throwable(s"Could not merge branch $target into $branch with error: $mergeExit")
+//          )
+      ZIO.unit
+    } yield folderPath
 
   // TODO: Does zio-nio have a helper for this?
   def cleanupTempDir(dir: ZFPath): RIO[Blocking, Boolean] = {

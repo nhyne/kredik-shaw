@@ -7,6 +7,7 @@ import zio.magic._
 import zio.system.System
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
+import dependencies.DependencyConverter
 import zio.logging._
 import zio.clock.Clock
 import zio.config.{ZConfig, getConfig}
@@ -35,17 +36,15 @@ object Main extends App {
 
     program
       .inject(
-        Console.live,
-        Blocking.live,
+        ZEnv.live,
         k8sDefault,
         Namespaces.live,
         ServerChannelFactory.auto,
-        System.live,
         EventLoopGroup.auto(5),
-        Clock.live,
         logger,
         config,
-        Template.live
+        Template.live,
+        DependencyConverter.live
       )
       .exitCode
   }

@@ -39,15 +39,16 @@ object GithubApi {
           override def getTopics(
               org: String,
               repo: String
-          ): ZIO[Has[SBackend], Throwable, Topics] = for {
-            client <- ZIO.service[SBackend]
-            request = basicRequest
-              .get(uri"https://api.github.com/repos/$org/$repo/topics")
-              .header("Accept", "application/vnd.github.mercy-preview+json")
-              .response(asJson[Topics])
-            response <- client.send(request)
-            topics <- ZIO.fromEither(response.body)
-          } yield topics
+          ): ZIO[Has[SBackend], Throwable, Topics] =
+            for {
+              client <- ZIO.service[SBackend]
+              request = basicRequest
+                .get(uri"https://api.github.com/repos/$org/$repo/topics")
+                .header("Accept", "application/vnd.github.mercy-preview+json")
+                .response(asJson[Topics])
+              response <- client.send(request)
+              topics <- ZIO.fromEither(response.body)
+            } yield topics
 
           override def nothing(
               something: String
@@ -86,7 +87,9 @@ object GithubApi {
       client <- ZIO.service[Github[Task]]
       repos <- client.repos.listUserRepos("zio")
       result <- ZIO.fromEither(repos.result).mapError(e => e.getCause)
-      _ <- ZIO.foreach_(result) { repo => putStrLn(s"${repo.owner.name}") }
+      _ <- ZIO.foreach_(result) { repo =>
+        putStrLn(s"${repo.owner.name}")
+      }
     } yield result
   }
 

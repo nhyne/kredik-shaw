@@ -1,7 +1,7 @@
 package template
 
+import template.RepoConfig.ImageTag
 import zio.process._
-
 import zio._
 import zio.blocking.Blocking
 import zio.nio.channels.FileChannel
@@ -27,9 +27,10 @@ object Template {
   }
 
   // TODO: Would be nicer if this was file/Path based instead of string
-  private def kustomizeCommand(dir: Path) = dir.toAbsolutePath.map(path =>
-    Command("kustomize", "build", path.toString())
-  )
+  private def kustomizeCommand(dir: Path) =
+    dir.toAbsolutePath.map(path =>
+      Command("kustomize", "build", path.toString())
+    )
   private def kustomizeCommand(dir: String) = Command("kustomize", "build", dir)
   private def template(dir: Path, config: RepoConfig) =
     config.templateCommand match {
@@ -47,13 +48,13 @@ object Template {
     ZLayer.succeed {
       new Service {
         override def templateManifests(
+            repoConfig: RepoConfig,
             repoFolder: Path,
             namespaceName: String,
             gitRevision: String
-        ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path] = {
+        ): ZIO[Blocking, Throwable, Path] = {
           for {
-            config <- ZIO.service[RepoConfig]
-            templateOutput <- template(repoFolder, config)
+            templateOutput <- template(repoFolder, repoConfig)
               .map(
                 substituteNamespace(_, namespaceName)
               )
@@ -85,15 +86,16 @@ object Template {
     manifests.replace(NAMESPACE_SUBSTITUTION, namespaceName)
 
   private val GIT_REV_SUBSTITUTION = "GIT_HASH"
-  private def substituteImage(manifests: String, gitTag: String) =
-    manifests.replace(GIT_REV_SUBSTITUTION, "latest")
+  private def substituteImage(manifests: String, imageTag: ImageTag) =
+    manifests.replace(GIT_REV_SUBSTITUTION, imageTag)
 
   trait Service {
     def templateManifests(
+        repoConfig: RepoConfig,
         repoFolder: Path,
         namespaceName: String,
-        gitRevision: String
-    ): ZIO[Has[RepoConfig] with Blocking, Throwable, Path]
+        imageTag: ImageTag
+    ): ZIO[Blocking, Throwable, Path]
   }
 
 }
