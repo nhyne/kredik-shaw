@@ -92,9 +92,10 @@ object MockDependencyConverter {
     override def dependencyToRepoConfig(
         dependency: Dependency,
         workingDir: Path
-    ): ZIO[Blocking with Random, Throwable, (RepoConfig, Path)] = ZIO
-      .fromOption(testMap.get(dependency.repoUrl))
-      .mapError(_ => new Throwable("could not get item from test map"))
+    ): ZIO[Blocking with Random, Throwable, (RepoConfig, Path)] =
+      ZIO
+        .fromOption(testMap.get(dependency.repoUrl))
+        .mapError(_ => new Throwable("could not get item from test map"))
   })
 
 }

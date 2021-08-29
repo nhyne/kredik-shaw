@@ -30,7 +30,10 @@ object DependencyConverter {
           repoDir = workingDir./(folderName.toString)
           _ <- Files.createDirectory(repoDir)
           _ <- cloneDependency(dependency, repoDir).exitCode
-          configFile = repoDir./(".watcher.conf")
+          configFile =
+            repoDir./(
+              ".watcher.conf"
+            ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
           configSource <- ZIO.fromEither(
             YamlConfigSource.fromYamlFile(
               configFile.toFile
@@ -44,28 +47,13 @@ object DependencyConverter {
     }
   )
 
-  private def cloneDependency(dependency: Dependency, path: Path) = Command(
-    "git",
-    "clone",
-    "--depth=2",
-    s"--branch=${dependency.imageTag.getOrElse("master")}",
-    dependency.repoUrl,
-    path.toString()
-  )
-
-  // TODO: Provide a real version of this function and use this version (maybe with a map lookup?) as a test implementation
-  // TODO: move this to a layer by itself. It will make testing easier and it only _slightly_ relates to the walkDeps function above
-  //          realistically the walk deps function relies on this as an R
-  private def mockDependencyToRepoConfig(
-      dependency: Dependency,
-      workingDir: Path
-  ): Task[(RepoConfig, Path)] = {
-    dependency.imageTag match {
-      case Some("circular") =>
-        ??? //Task.succeed(RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize, Some(Set(Dependency("circular", Some("circular"))))))
-      case Some(_) => ???
-      case None =>
-        ??? //Task.succeed(RepoConfig(new File("aaa"), TemplateCommand.Helm, None))
-    }
-  }
+  private def cloneDependency(dependency: Dependency, path: Path) =
+    Command(
+      "git",
+      "clone",
+      "--depth=2",
+      s"--branch=${dependency.imageTag.getOrElse("master")}",
+      dependency.repoUrl,
+      path.toString()
+    )
 }

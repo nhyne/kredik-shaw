@@ -27,9 +27,10 @@ object Template {
   }
 
   // TODO: Would be nicer if this was file/Path based instead of string
-  private def kustomizeCommand(dir: Path) = dir.toAbsolutePath.map(path =>
-    Command("kustomize", "build", path.toString())
-  )
+  private def kustomizeCommand(dir: Path) =
+    dir.toAbsolutePath.map(path =>
+      Command("kustomize", "build", path.toString())
+    )
   private def kustomizeCommand(dir: String) = Command("kustomize", "build", dir)
   private def template(dir: Path, config: RepoConfig) =
     config.templateCommand match {

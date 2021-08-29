@@ -44,15 +44,16 @@ object WebhookApi {
   private val apiRoot = Root / "api" / "sre-webhook"
 
   private val apiServer: HttpApp[ServerEnv, HttpError] =
-    HttpApp.collectM { case req @ Method.POST -> `apiRoot` =>
-      handlePostRequest(req).mapBoth(
-        cause =>
-          // TODO: Make this cleaner
-          HttpError.InternalServerError(cause =
-            Some(new Throwable(cause.toString))
-          ),
-        body => Response.text(body.toString)
-      )
+    HttpApp.collectM {
+      case req @ Method.POST -> `apiRoot` =>
+        handlePostRequest(req).mapBoth(
+          cause =>
+            // TODO: Make this cleaner
+            HttpError.InternalServerError(cause =
+              Some(new Throwable(cause.toString))
+            ),
+          body => Response.text(body.toString)
+        )
     }
 
   val server: Server[ServerEnv, HttpError] =
@@ -61,17 +62,18 @@ object WebhookApi {
       100 * 1024
     )
 
-  def handlePostRequest(request: Request) = request.getBodyAsString match {
+  def handlePostRequest(request: Request) =
+    request.getBodyAsString match {
 
-    case Some(body) =>
-      for {
-        pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-        _ <- performEventAction(pullRequestEvent).tapError(err =>
-          log.error(s"${err.toString}")
-        )
-      } yield pullRequestEvent // TODO: Should not be returning the pull request event
-    case None => ZIO.fail("Did not receive a request body")
-  }
+      case Some(body) =>
+        for {
+          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
+          _ <- performEventAction(pullRequestEvent).tapError(err =>
+            log.error(s"${err.toString}")
+          )
+        } yield pullRequestEvent // TODO: Should not be returning the pull request event
+      case None => ZIO.fail("Did not receive a request body")
+    }
 
   def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
