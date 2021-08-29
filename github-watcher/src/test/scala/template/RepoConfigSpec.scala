@@ -49,21 +49,28 @@ object RepoConfigSpec extends DefaultRunnableSpec {
                     new File("abc"),
                     TemplateCommand.Helm,
                     None
-                  ) -> (Path.fromJava(new File("abc").toPath), "latest")
+                  ) -> (Path("abc"), "latest")
                 )
               )
             )
           }
           .provideCustomLayer(MockDependencyConverter.test)
+      },
+      testM("circular dependency terminates") {
+        val repoConfig = RepoConfig(
+          new File("itsacircle"),
+          TemplateCommand.Kustomize,
+          Some(Set(Dependency("circular", Some("circular"))))
+        )
+        Files
+          .createTempDirectoryManaged(None, Seq.empty)
+          .use { path =>
+            assertM(walkDependencies(repoConfig, path, "somesha", path))(
+              equalTo(Map(repoConfig -> (Path("abc"), "circular")))
+            )
+          }
+          .provideCustomLayer(MockDependencyConverter.test)
       }
-//      testM("circular dependency terminates") {
-//        val repoConfig = RepoConfig(
-//          new File("itsacircle"),
-//          TemplateCommand.Kustomize,
-//          Some(Set(Dependency("circular", Some("circular"))))
-//        )
-//        assertM(walkDependencies(repoConfig))(equalTo(Set(repoConfig)))
-//      }
     )
 }
 
@@ -73,7 +80,12 @@ object MockDependencyConverter {
       new File("abc"),
       TemplateCommand.Helm,
       None
-    ), Path.fromJava(new File("abc").toPath))
+    ), Path("abc")),
+    "circular" -> (RepoConfig(
+      new File("itsacircle"),
+      TemplateCommand.Kustomize,
+      Some(Set(Dependency("circular", Some("circular"))))
+    ), Path("abc"))
   )
 
   val test = ZLayer.succeed(new DependencyConverter.Service {
