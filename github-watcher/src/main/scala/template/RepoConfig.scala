@@ -36,18 +36,24 @@ object RepoConfig {
 
   }
 
+  type ImageTag = String
+  object ImageTag {
+    def apply(s: String): ImageTag = s
+  }
+
   def walkDependencies(
       startingConfig: RepoConfig,
       startingRepoPath: Path,
+      startingSha: String, // TODO: Make this something besides a string
       workingDir: Path
   ): ZIO[Blocking with Random with DependencyConverterService, Throwable, Map[
     RepoConfig,
-    Path
-  ]] = walkDependencies(
+    (Path, ImageTag)
+  ]] = walkDeps(
     workingDir,
     startingConfig.dependencies.getOrElse(Set.empty),
     Set.empty,
-    Map(startingConfig -> startingRepoPath)
+    Map(startingConfig -> (startingRepoPath, ImageTag(startingSha)))
   )
 
   /* TODO: We want to walk the dependency graph and apply the watcher configs for each one
@@ -60,14 +66,14 @@ object RepoConfig {
    *    Could change configs: Set[RepoConfig] into Map[RepoConfig] => File??
    */
 
-  private def walkDependencies(
+  private def walkDeps(
       workingDir: Path,
       unseenDeps: Set[Dependency],
       seenDeps: Set[Dependency],
-      configs: Map[RepoConfig, Path]
+      configs: Map[RepoConfig, (Path, ImageTag)]
   ): ZIO[Blocking with Random with DependencyConverterService, Throwable, Map[
     RepoConfig,
-    Path
+    (Path, ImageTag)
   ]] = for {
     newUnseenDepsRef <- Ref.make(Set.empty[Dependency])
     seenDepsRef <- Ref.make(seenDeps)
@@ -84,7 +90,10 @@ object RepoConfig {
                   case (rc, path) =>
                     processedConfigsRef.get.flatMap { processedConfigs =>
                       processedConfigsRef
-                        .set(processedConfigs + (rc -> path))
+                        .set(
+                          processedConfigs + (rc -> (path, dep.imageTag
+                            .getOrElse(ImageTag("latest"))))
+                        )
                         .flatMap(_ => ZIO.succeed(rc.dependencies))
                     }
                 }
@@ -104,7 +113,7 @@ object RepoConfig {
     deps <- processedConfigsRef.get
     ret <-
       if (newUnseenDeps.isEmpty) ZIO.succeed(deps)
-      else walkDependencies(workingDir, newUnseenDeps, newSeenDeps, deps)
+      else walkDeps(workingDir, newUnseenDeps, newSeenDeps, deps)
   } yield ret
 
   val repoConfigDescriptor: ConfigDescriptor[RepoConfig] =
@@ -127,5 +136,5 @@ final case class RepoConfig(
 @describe("this config is for a dependency of a repo")
 final case class Dependency(
     repoUrl: String,
-    branch: Option[String]
+    imageTag: Option[String]
 )

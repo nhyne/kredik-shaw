@@ -47,7 +47,8 @@ object DependencyConverter {
   private def cloneDependency(dependency: Dependency, path: Path) = Command(
     "git",
     "clone",
-    s"--branch=${dependency.branch.getOrElse("master")}",
+    "--depth=2",
+    s"--branch=${dependency.imageTag.getOrElse("master")}",
     dependency.repoUrl,
     path.toString()
   )
@@ -59,7 +60,7 @@ object DependencyConverter {
       dependency: Dependency,
       workingDir: Path
   ): Task[(RepoConfig, Path)] = {
-    dependency.branch match {
+    dependency.imageTag match {
       case Some("circular") =>
         ??? //Task.succeed(RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize, Some(Set(Dependency("circular", Some("circular"))))))
       case Some(_) => ???

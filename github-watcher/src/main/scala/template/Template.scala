@@ -1,7 +1,7 @@
 package template
 
+import template.RepoConfig.ImageTag
 import zio.process._
-
 import zio._
 import zio.blocking.Blocking
 import zio.nio.channels.FileChannel
@@ -85,15 +85,15 @@ object Template {
     manifests.replace(NAMESPACE_SUBSTITUTION, namespaceName)
 
   private val GIT_REV_SUBSTITUTION = "GIT_HASH"
-  private def substituteImage(manifests: String, gitTag: String) =
-    manifests.replace(GIT_REV_SUBSTITUTION, "latest")
+  private def substituteImage(manifests: String, imageTag: ImageTag) =
+    manifests.replace(GIT_REV_SUBSTITUTION, imageTag)
 
   trait Service {
     def templateManifests(
         repoConfig: RepoConfig,
         repoFolder: Path,
         namespaceName: String,
-        gitRevision: String
+        imageTag: ImageTag
     ): ZIO[Blocking, Throwable, Path]
   }
 

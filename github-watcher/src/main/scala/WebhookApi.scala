@@ -4,7 +4,7 @@ import zhttp.http._
 import zio._
 import zio.blocking.{Blocking, effectBlocking}
 import zio.console.{Console, putStrLn}
-import zio.process.Command
+import zio.process.{Command, CommandError}
 import com.coralogix.zio.k8s.client.{K8sFailure, NotFound => K8sNotFound}
 import com.coralogix.zio.k8s.client.v1.namespaces.{
   Namespaces,
@@ -19,7 +19,7 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   Status => K8sStatus
 }
 import dependencies.DependencyConverter.DependencyConverterService
-import template.RepoConfig
+import template.{RepoConfig, Template}
 import zio.json._
 import zio.logging._
 import zio.config._
@@ -86,74 +86,84 @@ object WebhookApi {
     }
   }
 
-  private def openedEvent(event: PullRequestEvent) = {
+  private def openedEvent(event: PullRequestEvent): ZIO[Has[
+    Template.Service
+  ] with Blocking with Random with DependencyConverterService with Namespaces with Console with Clock with Logging, Object, Any] = {
 
-    val pullRequestWorkingDir = createRepoCloneDir(
-      event.pullRequest.base.repo.name
-    )
-    pullRequestWorkingDir.use { path =>
-      for {
-        repoDirectory <- gitCloneAndMerge(
-          path,
-          event.pullRequest.base.repo.owner.login,
-          event.pullRequest.head.repo.name,
-          event.pullRequest.head.ref,
-          event.pullRequest.base.ref
-        )
-        nsName <- createPRNamespace(
-          event.pullRequest.number,
-          event.pullRequest.base.repo.name
-        )
-        configSource <- ZIO.fromEither(
-          YamlConfigSource.fromYamlFile(
-            repoDirectory./(".watcher.yaml").toFile
+    Files
+      .createTempDirectoryManaged(
+        Some(s"pr-${event.pullRequest.base.repo.name}-"),
+        Seq.empty
+      )
+      .use { path =>
+        for {
+          repoDirectory <- gitCloneAndMerge(
+            path,
+            event.pullRequest.base.repo.owner.login,
+            event.pullRequest.head.repo.name,
+            event.pullRequest.head.ref,
+            event.pullRequest.base.ref
           )
-        )
-        initialRepoConfig <- ZIO.fromEither(
-          read(RepoConfig.repoConfigDescriptor.from(configSource))
-        )
+          nsName <- createPRNamespace(
+            event.pullRequest.number,
+            event.pullRequest.base.repo.name
+          )
+          configSource <- ZIO.fromEither(
+            YamlConfigSource.fromYamlFile(
+              repoDirectory./(".watcher.yaml").toFile
+            )
+          )
+          initialRepoConfig <- ZIO.fromEither(
+            read(RepoConfig.repoConfigDescriptor.from(configSource))
+          )
 
-        depsWithPaths <- RepoConfig.walkDependencies(
-          initialRepoConfig,
-          repoDirectory,
-          path
-        )
-        _ <- putStrLn(s"$depsWithPaths")
-        templateService <- ZIO.service[template.Template.Service]
-        templatedManifests <- templateService
-          .templateManifests(
+          depsWithPaths <- RepoConfig.walkDependencies(
             initialRepoConfig,
             repoDirectory,
-            nsName,
-            event.pullRequest.head.sha
+            event.pullRequest.head.sha,
+            path
           )
-        applied <- applyFile(templatedManifests, nsName)
-        _ <- cleanupTempDir(repoDirectory)
-      } yield applied
-    }
+          templateService <- ZIO.service[template.Template.Service]
+          _ <- ZIO.foreach(depsWithPaths) {
+            case (repoConfig, (path, imageTag)) =>
+              for {
+                _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+                templatedManifests <- templateService.templateManifests(
+                  repoConfig,
+                  path,
+                  nsName,
+                  imageTag
+                )
+                exitCode <- applyFile(templatedManifests, nsName).exitCode
+              } yield repoConfig -> exitCode
+          }
+        } yield ()
+      }
   }
 
   // TODO: This is very similar to the clone in DependencyConverter
   private def gitClone(repo: String, branch: String, path: ZFPath) =
-    Command("git", "clone", s"--branch=$branch", repo, path.toString())
+    Command(
+      "git",
+      "clone",
+      "--depth=2",
+      s"--branch=$branch",
+      repo,
+      path.toString()
+    )
 
   private def gitMerge(target: String) =
     Command("git", "merge", s"origin/$target")
 
-  // TODO: Make this return a managed
-  private def createRepoCloneDir(repo: String) =
-    Files.createTempDirectoryManaged(Some(s"pr-$repo-"), Seq.empty)
-
-  private def applyFile(repoDir: ZFPath, namespaceName: String) = for {
-    exitCode <- Command(
+  private def applyFile(repoDir: ZFPath, namespaceName: String) =
+    Command(
       "kubectl",
       "apply",
       "-n",
       namespaceName,
       "-f",
       repoDir.toString()
-    ).run
-  } yield exitCode
+    )
 
   // TODO: Should do this work in a temp directory that gets cleaned up later
   // TODO: These params are terrible, too many strings!
@@ -163,7 +173,11 @@ object WebhookApi {
       repo: String,
       branch: String,
       target: String
-  ): ZIO[Blocking with Random with Console with Clock, Throwable, ZFPath] =
+  ): ZIO[
+    Blocking with Random with Logging with Console with Clock,
+    Throwable,
+    ZFPath
+  ] =
     for {
       folderName <- random.nextUUID
       folderPath = workingDir./(folderName.toString)
@@ -177,13 +191,14 @@ object WebhookApi {
         if (cloneExit.code > 0)
           ZIO.fail(new Throwable(s"Could not clone repo: $repo"))
         else
-          gitMerge(target).workingDirectory(folderPath.toFile).exitCode
+          gitMerge(target).workingDirectory(folderPath.toFile).string
+      _ <- log.info(s"$mergeExit")
       _ <-
-        if (mergeExit.code > 0)
-          ZIO.fail(
-            new Throwable(s"Could not merge branch $target into $branch")
-          )
-        else ZIO.unit
+//        if (mergeExit.code > 0)
+//          ZIO.fail(
+//            new Throwable(s"Could not merge branch $target into $branch with error: $mergeExit")
+//          )
+        ZIO.unit
     } yield folderPath
 
   // TODO: Does zio-nio have a helper for this?
