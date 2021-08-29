@@ -49,9 +49,8 @@ object WebhookApi {
         handlePostRequest(req).mapBoth(
           cause =>
             // TODO: Make this cleaner
-            HttpError.InternalServerError(cause =
-              Some(new Throwable(cause.toString))
-            ),
+            HttpError
+              .InternalServerError(cause = Some(new Throwable(cause.toString))),
           body => Response.text(body.toString)
         )
     }
@@ -189,18 +188,17 @@ object WebhookApi {
         branch,
         folderPath
       ).exitCode
-      mergeExit <-
-        if (cloneExit.code > 0)
-          ZIO.fail(new Throwable(s"Could not clone repo: $repo"))
-        else
-          gitMerge(target).workingDirectory(folderPath.toFile).string
+      mergeExit <- if (cloneExit.code > 0)
+        ZIO.fail(new Throwable(s"Could not clone repo: $repo"))
+      else
+        gitMerge(target).workingDirectory(folderPath.toFile).string
       _ <- log.info(s"$mergeExit")
       _ <-
 //        if (mergeExit.code > 0)
 //          ZIO.fail(
 //            new Throwable(s"Could not merge branch $target into $branch with error: $mergeExit")
 //          )
-        ZIO.unit
+      ZIO.unit
     } yield folderPath
 
   // TODO: Does zio-nio have a helper for this?

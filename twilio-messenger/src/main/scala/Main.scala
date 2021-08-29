@@ -43,40 +43,37 @@ object Messenger extends App {
 
   def doAPutUser(): ResponseM[UserService.UserService, HttpError] =
     for {
-      a <-
-        RIO
-          .accessM[UserService.UserService](
-            _.get.insertUser(
-              NewUser(
-                firstName = "adam",
-                lastName = "johnson",
-                email = "email",
-                phoneNumber = "3456789"
-              )
+      a <- RIO
+        .accessM[UserService.UserService](
+          _.get.insertUser(
+            NewUser(
+              firstName = "adam",
+              lastName = "johnson",
+              email = "email",
+              phoneNumber = "3456789"
             )
           )
-          .bimap(
-            _ => HttpError.NotImplemented("whooop error!"),
-            user => Response.text(s"$user")
-          )
+        )
+        .bimap(
+          _ => HttpError.NotImplemented("whooop error!"),
+          user => Response.text(s"$user")
+        )
     } yield a
 
   def doAGetUser(
       userId: String
   ): ResponseM[UserService.UserService with Logging, HttpError] =
     for {
-      userUUID <-
-        ZIO
-          .fromTry(scala.util.Try(UUID.fromString(userId)))
-          .mapError(_ => HttpError.InternalServerError("bboooo"))
+      userUUID <- ZIO
+        .fromTry(scala.util.Try(UUID.fromString(userId)))
+        .mapError(_ => HttpError.InternalServerError("bboooo"))
       _ <- log.info("coooooooooooooool")
-      user <-
-        RIO
-          .accessM[UserService.UserService](_.get.getUserById(userUUID))
-          .bimap(
-            _ => HttpError.InternalServerError("boo"),
-            user => Response.jsonString(user.toJson)
-          )
+      user <- RIO
+        .accessM[UserService.UserService](_.get.getUserById(userUUID))
+        .bimap(
+          _ => HttpError.InternalServerError("boo"),
+          user => Response.jsonString(user.toJson)
+        )
 
     } yield user
 

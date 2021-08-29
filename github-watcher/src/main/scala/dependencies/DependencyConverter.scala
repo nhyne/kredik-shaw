@@ -30,10 +30,9 @@ object DependencyConverter {
           repoDir = workingDir./(folderName.toString)
           _ <- Files.createDirectory(repoDir)
           _ <- cloneDependency(dependency, repoDir).exitCode
-          configFile =
-            repoDir./(
-              ".watcher.conf"
-            ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
+          configFile = repoDir./(
+            ".watcher.conf"
+          ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
           configSource <- ZIO.fromEither(
             YamlConfigSource.fromYamlFile(
               configFile.toFile
