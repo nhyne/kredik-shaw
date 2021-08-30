@@ -1,5 +1,6 @@
 package dependencies
 
+import git.Git
 import template.{Dependency, RepoConfig}
 import zio.blocking.Blocking
 import zio.config.read
@@ -9,16 +10,23 @@ import zio.process.Command
 import zio._
 import zio.random.Random
 import zio.config.yaml.YamlConfigSource
+import git.Git.{Branch, GitCliService, Repository}
+import template.RepoConfig.ImageTag
 
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
+  private val defaultImageTag = ImageTag("latest")
 
   type DependencyConverterService = Has[Service]
   trait Service {
     def dependencyToRepoConfig(
         dependency: Dependency,
         workingDir: Path
-    ): ZIO[Blocking with Random, Throwable, (RepoConfig, Path)]
+    ): ZIO[
+      Blocking with Random with GitCliService,
+      Throwable,
+      (RepoConfig, Path)
+    ]
   }
 
   val live = ZLayer.succeed(
@@ -26,12 +34,29 @@ object DependencyConverter {
       override def dependencyToRepoConfig(
           dependency: Dependency,
           workingDir: Path
-      ): ZIO[Blocking with Random, Throwable, (RepoConfig, Path)] = {
+      ): ZIO[
+        Blocking with Random with GitCliService,
+        Throwable,
+        (RepoConfig, Path)
+      ] = {
         for {
           folderName <- random.nextUUID
           repoDir = workingDir./(folderName.toString)
           _ <- Files.createDirectory(repoDir)
-          _ <- cloneDependency(dependency, repoDir).exitCode
+          repo = Repository.fromNameAndOwner(dependency.name, dependency.owner)
+          _ <- ZIO
+            .service[Git.Service]
+            .flatMap(git =>
+              git.gitCloneDepth(
+                repo,
+                Branch.fromString(
+                  dependency.imageTag.getOrElse(defaultImageTag).value,
+                  repo
+                ),
+                2,
+                repoDir
+              )
+            )
           configFile = repoDir./(
             watcherConfFile
           ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
@@ -47,14 +72,4 @@ object DependencyConverter {
       }
     }
   )
-
-  private def cloneDependency(dependency: Dependency, path: Path) =
-    Command(
-      "git",
-      "clone",
-      "--depth=2",
-      s"--branch=${dependency.imageTag.getOrElse("master")}",
-      dependency.repoUrl,
-      path.toString()
-    )
 }

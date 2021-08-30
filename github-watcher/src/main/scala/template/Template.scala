@@ -51,7 +51,7 @@ object Template {
             repoConfig: RepoConfig,
             repoFolder: Path,
             namespaceName: String,
-            gitRevision: String
+            gitRevision: ImageTag
         ): ZIO[Blocking, Throwable, Path] = {
           for {
             templateOutput <- template(repoFolder, repoConfig)
@@ -87,7 +87,7 @@ object Template {
 
   private val GIT_REV_SUBSTITUTION = "GIT_HASH"
   private def substituteImage(manifests: String, imageTag: ImageTag) =
-    manifests.replace(GIT_REV_SUBSTITUTION, imageTag)
+    manifests.replace(GIT_REV_SUBSTITUTION, imageTag.value)
 
   trait Service {
     def templateManifests(

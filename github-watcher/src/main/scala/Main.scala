@@ -5,10 +5,11 @@ import zio.magic._
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import dependencies.DependencyConverter
+import git.Git
 import prom.Metrics
 import zio.logging._
 import zio.config.{ZConfig, getConfig}
-import zio.config.yaml.{YamlConfigSource, YamlConfig}
+import zio.config.yaml.{YamlConfig, YamlConfigSource}
 import template.Template
 import zio.metrics.prometheus.Registry
 import zio.metrics.prometheus.exporters.Exporters
@@ -57,7 +58,8 @@ object Main extends App {
         DependencyConverter.live,
         Registry.live,
         Exporters.live,
-        Metrics.live
+        Metrics.live,
+        Git.live
       )
       .exitCode
   }

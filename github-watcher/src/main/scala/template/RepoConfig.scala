@@ -2,6 +2,8 @@ package template
 
 import Template.TemplateCommand
 import dependencies.DependencyConverter.DependencyConverterService
+import git.Git.{GitCliService, Repository}
+import template.RepoConfig.ImageTag
 import zio._
 import zio.blocking.Blocking
 import zio.config._
@@ -36,20 +38,21 @@ object RepoConfig {
 
   }
 
-  type ImageTag = String
-  object ImageTag {
-    def apply(s: String): ImageTag = s
-  }
+  final case class ImageTag(value: String)
 
   def walkDependencies(
       startingConfig: RepoConfig,
       startingRepoPath: Path,
       startingSha: String, // TODO: Make this something besides a string
       workingDir: Path
-  ): ZIO[Blocking with Random with DependencyConverterService, Throwable, Map[
-    RepoConfig,
-    (Path, ImageTag)
-  ]] =
+  ): ZIO[
+    Blocking with Random with DependencyConverterService with GitCliService,
+    Throwable,
+    Map[
+      RepoConfig,
+      (Path, ImageTag)
+    ]
+  ] =
     walkDeps(
       workingDir,
       startingConfig.dependencies.getOrElse(Set.empty),
@@ -72,10 +75,14 @@ object RepoConfig {
       unseenDeps: Set[Dependency],
       seenDeps: Set[Dependency],
       configs: Map[RepoConfig, (Path, ImageTag)]
-  ): ZIO[Blocking with Random with DependencyConverterService, Throwable, Map[
-    RepoConfig,
-    (Path, ImageTag)
-  ]] =
+  ): ZIO[
+    Blocking with Random with DependencyConverterService with GitCliService,
+    Throwable,
+    Map[
+      RepoConfig,
+      (Path, ImageTag)
+    ]
+  ] =
     for {
       newUnseenDepsRef <- Ref.make(Set.empty[Dependency])
       seenDepsRef <- Ref.make(seenDeps)
@@ -134,6 +141,8 @@ final case class RepoConfig(
 //    we actually really need a refinement type or we need something else to know what the name of the repo is
 @describe("this config is for a dependency of a repo")
 final case class Dependency(
-    repoUrl: String,
-    imageTag: Option[String]
+    owner: String,
+    name: String,
+    branch: String,
+    imageTag: Option[ImageTag] // TODO: This is both an image tag AND a branch. The branch is what we actually clone, the image tag is the version applied
 )
