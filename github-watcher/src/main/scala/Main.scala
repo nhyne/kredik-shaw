@@ -8,16 +8,28 @@ import zio.system.System
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import dependencies.DependencyConverter
+import prom.Metrics
 import zio.logging._
 import zio.clock.Clock
 import zio.config.{ZConfig, getConfig}
 import template.Template
+import zio.metrics.prometheus.Registry
+import zio.metrics.prometheus.exporters.Exporters
+import zio.metrics.prometheus.helpers.{
+  getCurrentRegistry,
+  http,
+  initializeDefaultExports
+}
 
 object Main extends App {
 
   private val program = for {
     conf <- getConfig[ApplicationConfig]
-    _ <- putStrLn(s"${conf.port}")
+    registry <- getCurrentRegistry()
+    _ <- initializeDefaultExports(registry)
+    _ <- http(registry, 9090)
+      .tapError(err => log.error(err.toString))
+      .forkDaemon
     _ <- WebhookApi.server.start
   } yield ()
 
@@ -32,7 +44,7 @@ object Main extends App {
     val logger = Logging.console(
       LogLevel.Info,
       LogFormat.ColoredLogFormat()
-    ) >>> Logging.withRootLoggerName("github-watcher")
+    ) >>> Logging.withRootLoggerName("watcher")
 
     program
       .inject(
@@ -44,7 +56,10 @@ object Main extends App {
         logger,
         config,
         Template.live,
-        DependencyConverter.live
+        DependencyConverter.live,
+        Registry.live,
+        Exporters.live,
+        Metrics.live
       )
       .exitCode
   }

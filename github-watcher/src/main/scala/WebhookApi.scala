@@ -19,6 +19,8 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   Status => K8sStatus
 }
 import dependencies.DependencyConverter.DependencyConverterService
+import prom.Metrics.MetricsService
+import prom.Metrics
 import template.{RepoConfig, Template}
 import zio.json._
 import zio.logging._
@@ -31,6 +33,8 @@ import zio.duration.Duration.fromMillis
 import zio.nio.core.file.{Path => ZFPath}
 import zio.nio.file.Files
 import zio.random.Random
+import zio.metrics.prometheus.Registry
+import zio.metrics.prometheus.exporters.Exporters
 
 object WebhookApi {
 
@@ -40,6 +44,7 @@ object WebhookApi {
     with Logging
     with TemplateService
     with DependencyConverterService
+    with MetricsService
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
@@ -87,9 +92,9 @@ object WebhookApi {
     }
   }
 
-  private def openedEvent(event: PullRequestEvent): ZIO[Has[
-    Template.Service
-  ] with Blocking with Random with DependencyConverterService with Namespaces with Console with Clock with Logging, Object, Any] = {
+  private def openedEvent(
+      event: PullRequestEvent
+  ): ZIO[ServerEnv, Object, Any] = {
 
     Files
       .createTempDirectoryManaged(
@@ -147,7 +152,6 @@ object WebhookApi {
     Command(
       "git",
       "clone",
-      "--depth=2",
       s"--branch=$branch",
       repo,
       path.toString()
@@ -191,14 +195,14 @@ object WebhookApi {
       mergeExit <- if (cloneExit.code > 0)
         ZIO.fail(new Throwable(s"Could not clone repo: $repo"))
       else
-        gitMerge(target).workingDirectory(folderPath.toFile).string
-      _ <- log.info(s"$mergeExit")
-      _ <-
-//        if (mergeExit.code > 0)
-//          ZIO.fail(
-//            new Throwable(s"Could not merge branch $target into $branch with error: $mergeExit")
-//          )
-      ZIO.unit
+        gitMerge(target).workingDirectory(folderPath.toFile).exitCode
+      _ <- if (mergeExit.code > 0)
+        ZIO.fail(
+          new Throwable(
+            s"Could not merge branch $target into $branch with error"
+          )
+        )
+      else ZIO.unit
     } yield folderPath
 
   // TODO: Does zio-nio have a helper for this?
@@ -209,17 +213,20 @@ object WebhookApi {
   private def createPRNamespace(
       prNumber: Int,
       repo: String
-  ): ZIO[Namespaces, K8sFailure, String] = {
+  ): ZIO[Namespaces with MetricsService with Logging, K8sFailure, String] = {
     val (nsName, prNamespace) = namespaceObject(prNumber, repo)
-    get(nsName)
-      .foldM(
-        {
+    for {
+      namespace <- get(nsName)
+        .foldM({
           case K8sNotFound => create(prNamespace)
           case e           => ZIO.fail(e)
-        },
-        success => ZIO.succeed(success)
-      )
-      .map(_ => nsName)
+        }, success => ZIO.succeed(success))
+        .map(_ => nsName)
+      _ <- ZIO.service[Metrics.Service].flatMap(_.namespaceCreated()).catchAll {
+        e =>
+          log.error(e.toString) *> ZIO.unit
+      }
+    } yield namespace
   }
 
   private def namespaceName(prNumber: Int, repo: String): String =
