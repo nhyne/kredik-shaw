@@ -16,7 +16,6 @@ import zio.logging.{Logging, log}
 
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
-  private val defaultImageTag = ImageTag("latest")
 
   private type Env = Blocking with Random with GitCliService with Logging
 

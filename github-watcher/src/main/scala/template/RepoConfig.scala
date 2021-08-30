@@ -152,3 +152,8 @@ final case class Dependency(
     branch: String,
     imageTag: Option[ImageTag]
 )
+
+object Dependency {
+  def repoUrl(dependency: Dependency): String =
+    s"https://github.com/${dependency.owner}/${dependency.name}"
+}
