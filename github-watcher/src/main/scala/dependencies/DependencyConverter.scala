@@ -12,10 +12,13 @@ import zio.random.Random
 import zio.config.yaml.YamlConfigSource
 import git.Git.{Branch, GitCliService, Repository}
 import template.RepoConfig.ImageTag
+import zio.logging.{Logging, log}
 
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
   private val defaultImageTag = ImageTag("latest")
+
+  private type Env = Blocking with Random with GitCliService with Logging
 
   type DependencyConverterService = Has[Service]
   trait Service {
@@ -23,7 +26,7 @@ object DependencyConverter {
         dependency: Dependency,
         workingDir: Path
     ): ZIO[
-      Blocking with Random with GitCliService,
+      Env,
       Throwable,
       (RepoConfig, Path)
     ]
@@ -35,7 +38,7 @@ object DependencyConverter {
           dependency: Dependency,
           workingDir: Path
       ): ZIO[
-        Blocking with Random with GitCliService,
+        Env,
         Throwable,
         (RepoConfig, Path)
       ] = {
@@ -50,7 +53,7 @@ object DependencyConverter {
               git.gitCloneDepth(
                 repo,
                 Branch.fromString(
-                  dependency.imageTag.getOrElse(defaultImageTag).value,
+                  dependency.branch,
                   repo
                 ),
                 2,
@@ -60,11 +63,17 @@ object DependencyConverter {
           configFile = repoDir./(
             watcherConfFile
           ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
-          configSource <- ZIO.fromEither(
-            YamlConfigSource.fromYamlFile(
-              configFile.toFile
+          configSource <- ZIO
+            .fromEither(
+              YamlConfigSource.fromYamlFile(
+                configFile.toFile
+              )
             )
-          )
+            .tapError(_ =>
+              log.error(
+                s"Could not read config file for dependency: $dependency"
+              )
+            )
           config <- ZIO.fromEither(
             read(RepoConfig.repoConfigDescriptor.from(configSource))
           )

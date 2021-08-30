@@ -9,6 +9,7 @@ import zio.blocking.Blocking
 import zio.config._
 import zio.config.derivation.describe
 import zio.config.magnolia.DeriveConfigDescriptor
+import zio.logging.Logging
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.process.{Command, CommandError}
@@ -19,6 +20,11 @@ import java.io.File
 
 object RepoConfig {
 
+  private type Env = Blocking
+    with Random
+    with DependencyConverterService
+    with GitCliService
+    with Logging
   object DependencyWalker {
     trait Service {
       def walkDependencies(startingConfig: RepoConfig): Task[Set[RepoConfig]]
@@ -46,7 +52,7 @@ object RepoConfig {
       startingSha: String, // TODO: Make this something besides a string
       workingDir: Path
   ): ZIO[
-    Blocking with Random with DependencyConverterService with GitCliService,
+    Env,
     Throwable,
     Map[
       RepoConfig,
@@ -76,7 +82,7 @@ object RepoConfig {
       seenDeps: Set[Dependency],
       configs: Map[RepoConfig, (Path, ImageTag)]
   ): ZIO[
-    Blocking with Random with DependencyConverterService with GitCliService,
+    Env,
     Throwable,
     Map[
       RepoConfig,
@@ -144,5 +150,5 @@ final case class Dependency(
     owner: String,
     name: String,
     branch: String,
-    imageTag: Option[ImageTag] // TODO: This is both an image tag AND a branch. The branch is what we actually clone, the image tag is the version applied
+    imageTag: Option[ImageTag]
 )
