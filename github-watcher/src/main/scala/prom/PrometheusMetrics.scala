@@ -8,15 +8,15 @@ object Metrics {
 
   type MetricsService = Has[Service]
   trait Service {
-
     def namespaceCreated(): Task[Unit]
   }
 
   val live: ZLayer[Registry, Throwable, Has[Service]] = ZLayer.fromEffect {
-    val namespaceMetricName = "namespaces"
+    val namespaceMetricName = "namespaces_created"
     for {
       c <- counter.register(
         namespaceMetricName,
+        Array("repository"),
         "the number of namespaces created"
       )
       layer = new Service {
