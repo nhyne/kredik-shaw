@@ -37,5 +37,4 @@ object GitSpec {
       ZIO.succeed(Path("cool"))
 
   })
-
 }
