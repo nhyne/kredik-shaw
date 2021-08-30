@@ -1,11 +1,11 @@
-import zio.config._
 import zio.config.magnolia.DeriveConfigDescriptor.descriptor
 
 object ApplicationConfig {
-  val configDescriptor = descriptor[ApplicationConfig]
-
+  val appConfigDescriptor = descriptor[ApplicationConfig]
 }
 
+// TODO: Type Refinement
 final case class ApplicationConfig(
-    port: Int
+    port: Int,
+    prometheusPort: Int
 )

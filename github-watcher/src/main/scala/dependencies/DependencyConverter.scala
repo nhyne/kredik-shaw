@@ -11,6 +11,8 @@ import zio.random.Random
 import zio.config.yaml.YamlConfigSource
 
 object DependencyConverter {
+  private val watcherConfFile = ".watcher.yaml"
+
   type DependencyConverterService = Has[Service]
   trait Service {
     def dependencyToRepoConfig(
@@ -31,7 +33,7 @@ object DependencyConverter {
           _ <- Files.createDirectory(repoDir)
           _ <- cloneDependency(dependency, repoDir).exitCode
           configFile = repoDir./(
-            ".watcher.conf"
+            watcherConfFile
           ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
           configSource <- ZIO.fromEither(
             YamlConfigSource.fromYamlFile(

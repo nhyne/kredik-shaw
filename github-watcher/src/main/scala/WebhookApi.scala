@@ -38,13 +38,13 @@ import zio.metrics.prometheus.exporters.Exporters
 
 object WebhookApi {
 
-  private val PORT = 8090
   private type ServerEnv = ZEnv
     with Namespaces
     with Logging
     with TemplateService
     with DependencyConverterService
     with MetricsService
+    with Has[ApplicationConfig]
 
   private val apiRoot = Root / "api" / "sre-webhook"
 
@@ -60,11 +60,15 @@ object WebhookApi {
         )
     }
 
-  val server: Server[ServerEnv, HttpError] =
-    Server.port(PORT) ++ Server.app(apiServer) ++ Server.maxRequestSize(
+  def server()
+      : ZIO[Has[ApplicationConfig], Nothing, Server[ServerEnv, HttpError]] = {
+    for {
+      port <- ZIO.service[ApplicationConfig].map(_.port)
+    } yield Server.port(port) ++ Server.app(apiServer) ++ Server.maxRequestSize(
       // This is currently arbitrary. Would like to switch to streams/chunks
       100 * 1024
     )
+  }
 
   def handlePostRequest(request: Request) =
     request.getBodyAsString match {
