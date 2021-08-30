@@ -17,6 +17,6 @@ jobs:
         uses: actions/cache@v2.1.6
         with:
           path: /nix/store
-          key: ${{ runner.os }}-nix
+          key: ${{ runner.os }}-nix-${{ hashFiles('**/*.nix', 'nix/sources.json') }}
       - run: nix-shell --pure --command "scalafmt --non-interactive --check --quiet"
       - run: nix-shell --pure --command "sbt test"
