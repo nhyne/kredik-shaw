@@ -12,5 +12,11 @@ jobs:
       - uses: cachix/install-nix-action@v13
       - name: Cache scala dependencies
         uses: coursier/cache-action@v6.3
+      - name: cache nix
+        id: cache-nix
+        uses: actions/cache@v2.1.6
+        with:
+          path: /nix/store
+          key: ${{ runner.os }}-nix
       - run: nix-shell --pure --command "scalafmt --non-interactive --check --quiet"
       - run: nix-shell --pure --command "sbt test"
