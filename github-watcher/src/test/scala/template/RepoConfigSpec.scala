@@ -1,19 +1,21 @@
 package template
 
-import template.RepoConfig.walkDependencies
+import template.RepoConfig.{ImageTag, walkDependencies}
 import template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
 import Assertion.{hasSameElementsDistinct, isNull}
 import dependencies.DependencyConverter
+import git.GitSpec
 import zio.{Has, URLayer}
-import zio.test.environment.TestEnvironment
-import zio.test.mock._
+import zio.test.environment.{TestConsole, TestEnvironment}
 import zio._
 import zio.blocking.Blocking
+import zio.logging.Logging
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.random.Random
+import zio.magic._
 
 import java.io.File
 import scala.collection.immutable.Set
@@ -27,16 +29,16 @@ object RepoConfigSpec extends DefaultRunnableSpec {
           .createTempDirectoryManaged(None, Seq.empty)
           .use { path =>
             assertM(walkDependencies(repoConfig, path, "somesha", path))(
-              equalTo(Map(repoConfig -> (path, "somesha")))
+              equalTo(Map(repoConfig -> (path, ImageTag("somesha"))))
             )
           }
-          .provideCustomLayer(MockDependencyConverter.test)
+//          .injectSome(MockDependencyConverter.test,  GitSpec.test, Logging.console())
       },
       testM("repo has one dependency") {
         val repoConfig = RepoConfig(
           new File("abc"),
           TemplateCommand.Helm,
-          Some(Set(Dependency("somewhere.test", None)))
+          Some(Set(Dependency("somewhere.test", "", "", None)))
         )
         Files
           .createTempDirectoryManaged(None, Seq.empty)
@@ -44,38 +46,45 @@ object RepoConfigSpec extends DefaultRunnableSpec {
             assertM(walkDependencies(repoConfig, path, "somesha", path))(
               equalTo(
                 Map(
-                  repoConfig -> (path, "somesha"),
+                  repoConfig -> (path, ImageTag("somesha")),
                   RepoConfig(
                     new File("abc"),
                     TemplateCommand.Helm,
                     None
-                  ) -> (Path("abc"), "latest")
+                  ) -> (Path("abc"), ImageTag("latest"))
                 )
               )
             )
           }
-          .provideCustomLayer(MockDependencyConverter.test)
       },
       testM("circular dependency terminates") {
         val repoConfig = RepoConfig(
           new File("itsacircle"),
           TemplateCommand.Kustomize,
-          Some(Set(Dependency("circular", Some("circular"))))
+          Some(
+            Set(
+              Dependency(
+                "circular",
+                "circular",
+                "circular",
+                Some(ImageTag("circular"))
+              )
+            )
+          )
         )
         Files
           .createTempDirectoryManaged(None, Seq.empty)
           .use { path =>
             assertM(walkDependencies(repoConfig, path, "somesha", path))(
-              equalTo(Map(repoConfig -> (Path("abc"), "circular")))
+              equalTo(Map(repoConfig -> (Path("abc"), ImageTag("circular"))))
             )
           }
-          .provideCustomLayer(MockDependencyConverter.test)
       }
-    )
+    ).injectSome(MockDependencyConverter.test, GitSpec.test, Logging.console())
 }
 
 object MockDependencyConverter {
-  private val testMap = Map(
+  private val testMap: Map[String, (RepoConfig, Path)] = Map(
     "somewhere.test" -> (RepoConfig(
       new File("abc"),
       TemplateCommand.Helm,
@@ -84,18 +93,28 @@ object MockDependencyConverter {
     "circular" -> (RepoConfig(
       new File("itsacircle"),
       TemplateCommand.Kustomize,
-      Some(Set(Dependency("circular", Some("circular"))))
+      Some(
+        Set(
+          Dependency(
+            "circular",
+            "circular",
+            "circular",
+            Some(ImageTag("circular"))
+          )
+        )
+      )
     ), Path("abc"))
   )
 
-  val test = ZLayer.succeed(new DependencyConverter.Service {
-    override def dependencyToRepoConfig(
-        dependency: Dependency,
-        workingDir: Path
-    ): ZIO[Blocking with Random, Throwable, (RepoConfig, Path)] =
-      ZIO
-        .fromOption(testMap.get(dependency.repoUrl))
-        .mapError(_ => new Throwable("could not get item from test map"))
-  })
+  val test: ULayer[Has[DependencyConverter.Service]] =
+    ZLayer.succeed(new DependencyConverter.Service {
+      override def dependencyToRepoConfig(
+          dependency: Dependency,
+          workingDir: Path
+      ): ZIO[Blocking with Random, Throwable, (RepoConfig, Path)] =
+        ZIO
+          .fromOption(testMap.get(dependency.owner))
+          .mapError(_ => new Throwable("could not get item from test map"))
+    })
 
 }

@@ -31,7 +31,7 @@ object Template {
     dir.toAbsolutePath.map(path =>
       Command("kustomize", "build", path.toString())
     )
-  private def kustomizeCommand(dir: String) = Command("kustomize", "build", dir)
+
   private def template(dir: Path, config: RepoConfig) =
     config.templateCommand match {
       case TemplateCommand.Helm => ???
@@ -51,14 +51,14 @@ object Template {
             repoConfig: RepoConfig,
             repoFolder: Path,
             namespaceName: String,
-            gitRevision: String
+            imageTag: ImageTag
         ): ZIO[Blocking, Throwable, Path] = {
           for {
             templateOutput <- template(repoFolder, repoConfig)
               .map(
                 substituteNamespace(_, namespaceName)
               )
-              .map(substituteImage(_, gitRevision))
+              .map(substituteImage(_, imageTag))
             tempFilePath <- Files.createTempFile(
               prefix = Some("templatedOutput"),
               fileAttributes = Seq(
@@ -87,7 +87,7 @@ object Template {
 
   private val GIT_REV_SUBSTITUTION = "GIT_HASH"
   private def substituteImage(manifests: String, imageTag: ImageTag) =
-    manifests.replace(GIT_REV_SUBSTITUTION, imageTag)
+    manifests.replace(GIT_REV_SUBSTITUTION, imageTag.value)
 
   trait Service {
     def templateManifests(

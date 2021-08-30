@@ -19,6 +19,7 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   Status => K8sStatus
 }
 import dependencies.DependencyConverter.DependencyConverterService
+import git.Git.GitCliService
 import prom.Metrics.MetricsService
 import prom.Metrics
 import template.{RepoConfig, Template}
@@ -28,6 +29,14 @@ import zio.config._
 import zio.config.yaml.YamlConfigSource
 import template.Template.TemplateService
 import zio.clock.Clock
+import git.Git.{
+  Branch,
+  PullRequestEvent,
+  PullRequest,
+  Repository,
+  PullRequestAction
+}
+import git.Git
 import zio.magic._
 import zio.duration.Duration.fromMillis
 import zio.nio.core.file.{Path => ZFPath}
@@ -44,6 +53,7 @@ object WebhookApi {
     with TemplateService
     with DependencyConverterService
     with MetricsService
+    with GitCliService
     with Has[ApplicationConfig]
 
   private val apiRoot = Root / "api" / "sre-webhook"
@@ -107,13 +117,14 @@ object WebhookApi {
       )
       .use { path =>
         for {
-          repoDirectory <- gitCloneAndMerge(
-            path,
-            event.pullRequest.base.repo.owner.login,
-            event.pullRequest.head.repo.name,
-            event.pullRequest.head.ref,
-            event.pullRequest.base.ref
-          )
+          repoDirectory <- ZIO.service[Git.Service].flatMap { git =>
+            git.gitCloneAndMerge(
+              event.pullRequest.head.repo,
+              event.pullRequest.head,
+              event.pullRequest.base,
+              path
+            )
+          }
           nsName <- createPRNamespace(
             event.pullRequest.number,
             event.pullRequest.base.repo.name
@@ -151,19 +162,6 @@ object WebhookApi {
       }
   }
 
-  // TODO: This is very similar to the clone in DependencyConverter
-  private def gitClone(repo: String, branch: String, path: ZFPath) =
-    Command(
-      "git",
-      "clone",
-      s"--branch=$branch",
-      repo,
-      path.toString()
-    )
-
-  private def gitMerge(target: String) =
-    Command("git", "merge", s"origin/$target")
-
   private def applyFile(repoDir: ZFPath, namespaceName: String) =
     Command(
       "kubectl",
@@ -173,46 +171,6 @@ object WebhookApi {
       "-f",
       repoDir.toString()
     )
-
-  // TODO: Should do this work in a temp directory that gets cleaned up later
-  // TODO: These params are terrible, too many strings!
-  def gitCloneAndMerge(
-      workingDir: ZFPath,
-      organization: String,
-      repo: String,
-      branch: String,
-      target: String
-  ): ZIO[
-    Blocking with Random with Logging with Console with Clock,
-    Throwable,
-    ZFPath
-  ] =
-    for {
-      folderName <- random.nextUUID
-      folderPath = workingDir./(folderName.toString)
-      _ <- Files.createDirectory(folderPath)
-      cloneExit <- gitClone(
-        s"https://github.com/$organization/$repo",
-        branch,
-        folderPath
-      ).exitCode
-      mergeExit <- if (cloneExit.code > 0)
-        ZIO.fail(new Throwable(s"Could not clone repo: $repo"))
-      else
-        gitMerge(target).workingDirectory(folderPath.toFile).exitCode
-      _ <- if (mergeExit.code > 0)
-        ZIO.fail(
-          new Throwable(
-            s"Could not merge branch $target into $branch with error"
-          )
-        )
-      else ZIO.unit
-    } yield folderPath
-
-  // TODO: Does zio-nio have a helper for this?
-  def cleanupTempDir(dir: ZFPath): RIO[Blocking, Boolean] = {
-    effectBlocking(dir.toFile.delete())
-  }
 
   private def createPRNamespace(
       prNumber: Int,
@@ -266,64 +224,6 @@ object WebhookApi {
       },
       status => ZIO.succeed(status)
     )
-  }
-
-  final case class PullRequestEvent(
-      action: PullRequestAction,
-      number: Int,
-      @jsonField("pull_request") pullRequest: PullRequest
-  )
-
-  final case class PullRequest(
-      url: String,
-      id: Long,
-      number: Int,
-      state: String,
-      head: Branch,
-      base: Branch
-  )
-
-  final case class Branch(
-      ref: String,
-      sha: String,
-      repo: Repository
-  ) // there are a lot more fields than just these
-  final case class Repository(
-      name: String,
-      @jsonField("full_name") fullName: String,
-      owner: Owner
-  )
-  // TODO: Would be better if I can just pull the owner from the request body. Not sure if there's something different between "owner" and "organization"
-  final case class Owner(login: String)
-
-  implicit val ownerDecoder: JsonDecoder[Owner] = DeriveJsonDecoder.gen[Owner]
-  implicit val repositoryDecoder: JsonDecoder[Repository] =
-    DeriveJsonDecoder.gen[Repository]
-  implicit val branchDecoder: JsonDecoder[Branch] =
-    DeriveJsonDecoder.gen[Branch]
-  implicit val pullRequestDecoder: JsonDecoder[PullRequest] =
-    DeriveJsonDecoder.gen[PullRequest]
-  implicit val pullRequestEventDecoder: JsonDecoder[PullRequestEvent] =
-    DeriveJsonDecoder.gen[PullRequestEvent]
-
-  sealed trait PullRequestAction
-
-  object PullRequestAction {
-    case object Opened extends PullRequestAction
-
-    case object Synchronize extends PullRequestAction
-
-    case object Closed extends PullRequestAction
-
-    final case class Unknown(`type`: String) extends PullRequestAction
-
-    implicit val prActionDecoder: JsonDecoder[PullRequestAction] =
-      JsonDecoder[String].map {
-        case "opened"      => Opened
-        case "synchronize" => Synchronize
-        case "closed"      => Closed
-        case actionType    => Unknown(actionType)
-      }
   }
 
 }
