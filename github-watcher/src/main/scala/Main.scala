@@ -34,9 +34,8 @@ object Main extends App {
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
-    // TODO: Should be coming out of resources dir
     val config = YamlConfig.fromFile(
-      ZFPath("watcher.yaml").toFile, // TODO: Move this file to the resources folder
+      ZFPath("src/main/resources/watcher.yaml").toFile,
       ApplicationConfig.appConfigDescriptor
     )
 
