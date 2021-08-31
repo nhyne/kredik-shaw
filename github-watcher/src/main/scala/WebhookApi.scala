@@ -17,6 +17,7 @@ import git.Git.{PullRequestAction, PullRequestEvent}
 import git.Git
 import kubernetes.Kubernetes
 import kubernetes.Kubernetes.KubernetesService
+import zio.duration.Duration.fromMillis
 import zio.nio.file.Files
 
 object WebhookApi {

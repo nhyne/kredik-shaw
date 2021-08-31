@@ -33,7 +33,7 @@ object GitSpec {
         head: Git.Branch,
         toMerge: Git.Branch,
         cloneDir: Path
-    ): ZIO[Blocking with Random with Console, Throwable, Path] =
+    ): ZIO[Blocking with Random, Throwable, Path] =
       ZIO.succeed(Path("cool"))
 
   })

@@ -102,8 +102,10 @@ object Kubernetes {
     }
   })
 
-  private def namespaceName(pullRequest: PullRequest): String =
-    s"${pullRequest.head.repo}-pr-${pullRequest.number}"
+  def namespaceName(pullRequest: PullRequest): String = {
+    // TODO: This format will be bad for long repo names or those that start similarly
+    s"${pullRequest.head.repo.name}-pr-${pullRequest.number}".trim.take(63)
+  } // max length of namespace
   private def namespaceObject(pullRequest: PullRequest): (String, Namespace) = {
     val nsName = namespaceName(pullRequest)
     (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))

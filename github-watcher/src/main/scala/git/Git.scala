@@ -2,8 +2,11 @@ package git
 
 import zio.{ExitCode, Has, ZIO, ZLayer, random}
 import zio.blocking.Blocking
+import zio.clock.{Clock, sleep}
 import zio.console.Console
+import zio.duration.Duration.fromMillis
 import zio.json._
+import zio.logging.{Logging, log}
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.process.{Command, CommandError}
@@ -21,7 +24,7 @@ object Git {
       url: String,
       id: Long,
       number: Int,
-      state: String,
+      state: String, // TODO: Should be a union type
       head: Branch,
       base: Branch
   )
@@ -41,7 +44,6 @@ object Git {
       name: String,
       @jsonField("full_name") fullName: String,
       owner: Owner,
-      @jsonField("git_url") gitUrl: String,
       @jsonField("html_url") htmlUrl: String,
       @jsonField("ssh_url") sshUrl: String,
       @jsonField("clone_url") cloneUrl: String
@@ -52,7 +54,6 @@ object Git {
         name,
         s"$name/$owner",
         Owner(owner),
-        gitUrl = s"git://github.com/$owner/$name.git",
         htmlUrl = s"https://github.com/$owner/$name",
         sshUrl = s"git@github.com:$owner/$name.git",
         cloneUrl = s"https://github.com/$owner/$name.git"
@@ -113,7 +114,7 @@ object Git {
         toMerge: Branch,
         cloneDir: Path
     ): ZIO[
-      Blocking with Random with Console,
+      Blocking with Random,
       Throwable,
       Path
     ]
@@ -131,9 +132,9 @@ object Git {
         "clone",
         s"--depth=$depth",
         s"--branch=${branch.ref}",
-        repository.gitUrl,
+        repository.htmlUrl,
         cloneInto.toString()
-      ).exitCode
+      ).successfulExitCode
 
     override def gitClone(
         repository: Repository,
@@ -144,7 +145,7 @@ object Git {
         "git",
         "clone",
         s"--branch=${branch.ref}",
-        repository.gitUrl,
+        repository.htmlUrl,
         cloneInto.toString()
       ).exitCode
 
@@ -154,7 +155,7 @@ object Git {
         toMerge: Branch,
         cloneInto: Path
     ): ZIO[
-      Blocking with Random with Console,
+      Blocking with Random,
       Throwable,
       Path
     ] =
@@ -162,26 +163,14 @@ object Git {
         folderName <- random.nextUUID
         folderPath = cloneInto./(folderName.toString)
         _ <- Files.createDirectory(folderPath)
-        cloneExit <- gitClone(
+        _ <- gitClone(
           repository,
           head,
           folderPath
-        ).exitCode
-        mergeExit <- if (cloneExit.code > 0)
-          ZIO.fail(
-            new Throwable(
-              s"Could not clone repo: ${repository.owner.login}/${repository.name}"
-            )
-          )
-        else
-          gitMerge(toMerge).workingDirectory(folderPath.toFile).exitCode
-        _ <- if (mergeExit.code > 0)
-          ZIO.fail(
-            new Throwable(
-              s"Could not merge branch $toMerge into $head with error"
-            )
-          )
-        else ZIO.unit
+        )
+        _ <- gitMerge(toMerge)
+          .workingDirectory(folderPath.toFile)
+          .successfulExitCode
       } yield folderPath
   })
 
