@@ -33,12 +33,12 @@ object WebhookApi {
     with DependencyWalkerService
     with Has[ApplicationConfig]
 
-  private val apiRoot = Root / "api" / "ahab-webhook"
+  private val apiRoot = Root / "api" / "webhook"
 
   private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM {
       case req @ Method.POST -> `apiRoot` =>
-        ahabPost(req).mapBoth(
+        post(req).mapBoth(
           cause =>
             // TODO: Make this cleaner
             HttpError
@@ -59,7 +59,7 @@ object WebhookApi {
     }
   }
 
-  private def ahabPost(request: Request) =
+  private def post(request: Request) =
     request.getBodyAsString match {
       case Some(body) =>
         for {
