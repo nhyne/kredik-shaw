@@ -4,7 +4,7 @@ import zhttp.service.server.ServerChannelFactory
 import zio.magic._
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
-import dependencies.DependencyConverter
+import dependencies.{DependencyConverter, DependencyWalker}
 import git.Git
 import kubernetes.Kubernetes
 import prom.Metrics
@@ -61,7 +61,8 @@ object Main extends App {
         Exporters.live,
         Metrics.live,
         Git.live,
-        Kubernetes.live
+        Kubernetes.live,
+        DependencyWalker.live
       )
       .exitCode
   }

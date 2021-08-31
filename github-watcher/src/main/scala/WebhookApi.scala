@@ -3,8 +3,10 @@ import zhttp.http._
 import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import dependencies.DependencyConverter.DependencyConverterService
+import dependencies.DependencyWalker
 import git.Git.GitCliService
 import prom.Metrics.MetricsService
+import dependencies.DependencyWalker.DependencyWalkerService
 import template.RepoConfig
 import zio.json._
 import zio.logging._
@@ -27,14 +29,15 @@ object WebhookApi {
     with MetricsService
     with GitCliService
     with KubernetesService
+    with DependencyWalkerService
     with Has[ApplicationConfig]
 
-  private val apiRoot = Root / "api" / "sre-webhook"
+  private val apiRoot = Root / "api" / "ahab-webhook"
 
   private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM {
       case req @ Method.POST -> `apiRoot` =>
-        handlePostRequest(req).mapBoth(
+        ahabPost(req).mapBoth(
           cause =>
             // TODO: Make this cleaner
             HttpError
@@ -45,17 +48,18 @@ object WebhookApi {
 
   def server()
       : ZIO[Has[ApplicationConfig], Nothing, Server[ServerEnv, HttpError]] = {
-    for {
-      port <- ZIO.service[ApplicationConfig].map(_.port)
-    } yield Server.port(port) ++ Server.app(apiServer) ++ Server.maxRequestSize(
-      // This is currently arbitrary. Would like to switch to streams/chunks
-      100 * 1024
-    )
+    ZIO.service[ApplicationConfig].map(_.port).flatMap { port =>
+      ZIO.succeed(
+        Server.port(port) ++ Server.app(apiServer) ++ Server.maxRequestSize(
+          // This is currently arbitrary. Would like to switch to streams/chunks
+          100 * 1024
+        )
+      )
+    }
   }
 
-  def handlePostRequest(request: Request) =
+  private def ahabPost(request: Request) =
     request.getBodyAsString match {
-
       case Some(body) =>
         for {
           pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
@@ -84,8 +88,7 @@ object WebhookApi {
 
   private def openedEvent(
       event: PullRequestEvent
-  ): ZIO[ServerEnv, Object, Any] = {
-
+  ): ZIO[ServerEnv, Throwable, Unit] = {
     Files
       .createTempDirectoryManaged(
         Some(s"pr-${event.pullRequest.base.repo.name}-"),
@@ -102,7 +105,9 @@ object WebhookApi {
             )
           }
           k8sService <- ZIO.service[Kubernetes.Service]
-          nsName <- k8sService.createPRNamespace(event.pullRequest)
+          nsName <- k8sService
+            .createPRNamespace(event.pullRequest)
+            .mapError(e => new Throwable(e.toString))
           configSource <- ZIO.fromEither(
             YamlConfigSource.fromYamlFile(
               repoDirectory./(".watcher.yaml").toFile
@@ -112,12 +117,16 @@ object WebhookApi {
             read(RepoConfig.repoConfigDescriptor.from(configSource))
           )
 
-          depsWithPaths <- RepoConfig.walkDependencies(
-            initialRepoConfig,
-            repoDirectory,
-            event.pullRequest.head.sha,
-            path
-          )
+          depsWithPaths <- ZIO
+            .service[DependencyWalker.Service]
+            .flatMap(
+              _.walkDependencies(
+                initialRepoConfig,
+                repoDirectory,
+                event.pullRequest.head.sha,
+                path
+              )
+            )
           templateService <- ZIO.service[template.Template.Service]
           _ <- ZIO.foreach(depsWithPaths) {
             case (repoConfig, (path, imageTag)) =>
