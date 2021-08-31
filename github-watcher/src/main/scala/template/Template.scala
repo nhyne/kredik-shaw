@@ -26,7 +26,6 @@ object Template {
     case object KustomizeHelm extends TemplateCommand
   }
 
-  // TODO: Would be nicer if this was file/Path based instead of string
   private def kustomizeCommand(dir: Path) =
     dir.toAbsolutePath.map(path =>
       Command("kustomize", "build", path.toString())

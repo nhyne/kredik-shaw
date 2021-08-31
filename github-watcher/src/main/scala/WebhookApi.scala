@@ -40,10 +40,8 @@ object WebhookApi {
       case req @ Method.POST -> `apiRoot` =>
         ahabPost(req).mapBoth(
           cause =>
-            // TODO: Make this cleaner
-            HttpError
-              .InternalServerError(cause = Some(new Throwable(cause.toString))),
-          body => Response.text(body.toString)
+            HttpError.InternalServerError(cause = Some(new Throwable(cause))),
+          body => Response.text(body)
         )
     }
 
@@ -64,28 +62,30 @@ object WebhookApi {
       case Some(body) =>
         for {
           pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-          _ <- performEventAction(pullRequestEvent).tapError(err =>
-            log.error(s"${err.toString}")
-          )
-        } yield pullRequestEvent // TODO: Should not be returning the pull request event
-      case None => ZIO.fail("Did not receive a request body")
+          _ <- performEventAction(pullRequestEvent).forkDaemon // Forking once we have a valid body TODO: Should comment on pull request if there was another error
+        } yield "OK"
+      case None => ZIO.fail("did not receive a request body")
     }
 
-  def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
+  private def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
-      case PullRequestAction.Opened => openedEvent(event).map(_.toString)
-      case PullRequestAction.Synchronize =>
-        openedEvent(event).map(
-          _.toString
-        ) // TODO: This should be its own action
+      case PullRequestAction.Opened      => openedEvent(event)
+      case PullRequestAction.Synchronize => synchronizeAction(event)
       case PullRequestAction.Closed =>
         ZIO
           .service[Kubernetes.Service]
           .flatMap(_.deletePRNamespace(event.pullRequest))
+          .mapBoth(k8sError => new Throwable(k8sError.toString), _ => ())
       case PullRequestAction.Unknown(actionType) =>
-        log.warn(s"got unknown action type: $actionType")
+        log.warn(
+          s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
+        ) *> ZIO.fail(new Throwable(s"unknown action type: $actionType"))
     }
   }
+
+  private def synchronizeAction(
+      event: PullRequestEvent
+  ): ZIO[ServerEnv, Throwable, Unit] = openedEvent(event)
 
   private def openedEvent(
       event: PullRequestEvent

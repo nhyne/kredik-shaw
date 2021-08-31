@@ -1,3 +1,4 @@
+import git.Git.PullRequest
 import zio._
 import zio.console.putStrLn
 import zio.interop.catz._
@@ -50,9 +51,10 @@ object GithubApi {
               topics <- ZIO.fromEither(response.body)
             } yield topics
 
-          override def nothing(
-              something: String
-          ): ZIO[Console, IOException, Unit] = putStrLn(something)
+          override def createComment(
+              message: String,
+              pullRequest: PullRequest
+          ): ZIO[Has[SBackend], Throwable, Unit] = ???
         }
       )
 
@@ -66,7 +68,10 @@ object GithubApi {
           repo: String
       ): ZIO[Has[SBackend], Throwable, Topics]
 
-      def nothing(something: String): ZIO[Console, IOException, Unit]
+      def createComment(
+          message: String,
+          pullRequest: PullRequest
+      ): ZIO[Has[SBackend], Throwable, Unit]
     }
   }
 

@@ -16,6 +16,7 @@ import zio.logging.{Logging, log}
 
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
+  private val watcherConfFileShort = ".watcher.yml"
 
   private type Env = Blocking with Random with GitCliService with Logging
 
@@ -59,14 +60,20 @@ object DependencyConverter {
                 repoDir
               )
             )
-          configFile = repoDir./(
-            watcherConfFile
-          ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
           configSource <- ZIO
             .fromEither(
-              YamlConfigSource.fromYamlFile(
-                configFile.toFile
-              )
+              YamlConfigSource
+                .fromYamlFile(
+                  repoDir
+                    ./(
+                      watcherConfFile
+                    )
+                    .toFile
+                )
+                .orElse(
+                  YamlConfigSource
+                    .fromYamlFile(repoDir./(watcherConfFileShort).toFile)
+                )
             )
             .tapError(_ =>
               log.error(

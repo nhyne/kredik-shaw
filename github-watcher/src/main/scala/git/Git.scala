@@ -24,7 +24,7 @@ object Git {
       url: String,
       id: Long,
       number: Int,
-      state: String, // TODO: Should be a union type
+      state: String, // TODO: Should be a union type when it is used
       head: Branch,
       base: Branch
   )
@@ -60,7 +60,6 @@ object Git {
       )
   }
 
-  // TODO: Would be better if I can just pull the owner from the request body. Not sure if there's something different between "owner" and "organization"
   final case class Owner(login: String)
 
   implicit val ownerDecoder: JsonDecoder[Owner] = DeriveJsonDecoder.gen[Owner]
