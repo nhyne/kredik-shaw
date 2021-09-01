@@ -41,7 +41,6 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
         "dev.zio" %% "zio-config-yaml" % zioConfigVersion,
         "dev.zio" %% "zio-metrics-prometheus" % zioMetricsVersion,
-        // Still not sure why the async client will not work with k8s. Keep getting a type error
         "com.softwaremill.sttp.client3" %% "slf4j-backend" % sttpClientVersion,
         "com.softwaremill.sttp.client3" %% "core" % sttpClientVersion,
         "com.softwaremill.sttp.client3" %% "zio-json" % sttpClientVersion,
