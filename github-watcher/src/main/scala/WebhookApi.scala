@@ -37,12 +37,12 @@ object WebhookApi {
     with GitAuthenticationService
     with Has[ApplicationConfig]
 
-  private val apiRoot = Root / "api" / "ahab-webhook"
+  private val apiRoot = Root / "api" / "webhook"
 
   private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM {
       case req @ Method.POST -> `apiRoot` =>
-        ahabPost(req).mapBoth(
+        post(req).mapBoth(
           cause =>
             HttpError.InternalServerError(cause = Some(new Throwable(cause))),
           body => Response.text(body)
@@ -61,7 +61,7 @@ object WebhookApi {
     }
   }
 
-  private def ahabPost(request: Request) =
+  private def post(request: Request) =
     request.getBodyAsString match {
       case Some(body) =>
         for {
