@@ -60,7 +60,6 @@ object Authentication {
       )
     } yield new Service {
       private val auth: AuthenticationScheme = authentication
-      // the live section should load up the authentication scheme
       override def getAuthentication()
           : ZIO[System, Nothing, AuthenticationScheme] = ZIO.succeed(auth)
     })
