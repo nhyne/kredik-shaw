@@ -4,19 +4,20 @@ import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import dependencies.DependencyConverter.DependencyConverterService
 import dependencies.DependencyWalker
-import git.Git.GitCliService
+import git.GitCli.GitCliService
 import prom.Metrics.MetricsService
 import dependencies.DependencyWalker.DependencyWalkerService
 import git.Authentication.GitAuthenticationService
 import template.RepoConfig
 import zio.json._
 import zio.logging._
+import zio.console.putStrLn
 import zio.config._
 import zio.config.yaml.YamlConfigSource
 import template.Template.TemplateService
-import git.Git.{PullRequestAction, PullRequestEvent}
-import git.Git
-import git.GithubApi.GithubApiService
+import git.GitCli.{PullRequestAction, PullRequestEvent}
+import git.{GitCli, GithubApi}
+import git.GithubApi.{GithubApiService, SBackend}
 import kubernetes.Kubernetes
 import kubernetes.Kubernetes.KubernetesService
 import zio.duration.Duration.fromMillis
@@ -35,6 +36,7 @@ object WebhookApi {
     with DependencyWalkerService
     with GithubApiService
     with GitAuthenticationService
+    with Has[SBackend]
     with Has[ApplicationConfig]
 
   private val apiRoot = Root / "api" / "webhook"
@@ -65,8 +67,31 @@ object WebhookApi {
     request.getBodyAsString match {
       case Some(body) =>
         for {
-          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-          _ <- performEventAction(pullRequestEvent).forkDaemon // Forking once we have a valid body TODO: Should comment on pull request if there was another error
+          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent]) // TODO: Once we have multiple events coming in we'll need to try a few different ones
+          _ <- performEventAction(pullRequestEvent)
+            .tapError(thrown =>
+              for {
+                _ <- log.info(
+                  s"failed to process PR event: ${pullRequestEvent.pullRequest
+                    .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+                )
+                _ <- ZIO
+                  .service[GithubApi.Service]
+                  .flatMap(
+                    _.createComment(
+                      thrown.toString,
+                      pullRequestEvent.pullRequest
+                    )
+                  )
+                  .tapError(e =>
+                    log.error(
+                      s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
+                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
+                    )
+                  )
+              } yield ()
+            )
+            .forkDaemon // Forking once we have a valid body
         } yield "OK"
       case None => ZIO.fail("did not receive a request body")
     }
@@ -101,7 +126,7 @@ object WebhookApi {
       )
       .use { path =>
         for {
-          repoDirectory <- ZIO.service[Git.Service].flatMap { git =>
+          repoDirectory <- ZIO.service[GitCli.Service].flatMap { git =>
             git.gitCloneAndMerge(
               event.pullRequest.head.repo,
               event.pullRequest.head,

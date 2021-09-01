@@ -14,7 +14,7 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   ObjectMeta,
   Status
 }
-import git.Git.{PullRequest}
+import git.GitCli.{PullRequest}
 import prom.Metrics
 import prom.Metrics.MetricsService
 import zio.nio.core.file.Path

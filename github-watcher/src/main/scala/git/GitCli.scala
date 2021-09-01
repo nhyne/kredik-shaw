@@ -12,7 +12,7 @@ import zio.nio.file.Files
 import zio.process.{Command, CommandError}
 import zio.random.Random
 
-object Git {
+object GitCli {
 
   final case class PullRequestEvent(
       action: PullRequestAction,
@@ -28,7 +28,9 @@ object Git {
       head: Branch,
       base: Branch
   ) {
-    def getBaseName() = base.repo.fullName
+    def getBaseFullName() = base.repo.fullName
+    def getBaseName() = base.repo.name
+    def getBaseOwner() = base.repo.owner.login
   }
 
   final case class Branch(

@@ -7,9 +7,9 @@ import sttp.client3._
 
 object Authentication {
 
-  private val GIT_BEARER_TOKEN = "GIT_BEARER_TOKEN"
-  private val GIT_USERNAME = "GIT_USERNAME"
-  private val GIT_TOKEN = "GIT_TOKEN"
+  private val GITHUB_BEARER_TOKEN = "GITHUB_BEARER_TOKEN"
+  private val GITHUB_USERNAME = "GITHUB_USERNAME"
+  private val GITHUB_TOKEN = "GITHUB_TOKEN"
 
   type GitAuthenticationService = Has[Service]
   trait Service {
@@ -33,15 +33,15 @@ object Authentication {
 
   val live: ZLayer[Has[SBackend] with System, Object, Has[Service]] =
     ZLayer.fromEffect(for {
-      gitBearer <- env(GIT_BEARER_TOKEN).mapError(e =>
-        GitAuthenticationError(s"Could not read $GIT_BEARER_TOKEN: $e")
+      gitBearer <- env(GITHUB_BEARER_TOKEN).mapError(e =>
+        GitAuthenticationError(s"Could not read $GITHUB_BEARER_TOKEN: $e")
       )
       authentication <- ZIO
         .fromOption(gitBearer.map(AuthenticationScheme.Bearer))
         .catchAll(_ =>
           for {
-            gitUsername <- env(GIT_USERNAME).flatMap(ZIO.fromOption(_))
-            gitToken <- env(GIT_TOKEN).flatMap(ZIO.fromOption(_))
+            gitUsername <- env(GITHUB_USERNAME).flatMap(ZIO.fromOption(_))
+            gitToken <- env(GITHUB_TOKEN).flatMap(ZIO.fromOption(_))
           } yield AuthenticationScheme.Basic(gitUsername, gitToken)
         )
         .mapError(_ =>

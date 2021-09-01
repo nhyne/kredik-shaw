@@ -1,7 +1,7 @@
 package git
 
 import git.Authentication.AuthenticationScheme
-import git.Git.PullRequest
+import git.GitCli.PullRequest
 import zio._
 import zio.interop.catz._
 import zio.interop.catz.implicits._
@@ -46,10 +46,14 @@ object GithubApi {
           for {
             client <- ZIO.service[SBackend]
             request = basicRequest
-              .post(uri"https://api.github.com/repos/${pullRequest
-                .getBaseName()}/issues/${pullRequest.number}/comments")
+              .post(
+                uri"https://api.github.com/repos/${pullRequest.getBaseOwner()}/${pullRequest
+                  .getBaseName()}/issues/${pullRequest.number}/comments"
+              )
               .header("Accept", "application/vnd.github.v3+json")
               .response(asJson[CommentResponse])
+              .body(CommentBody(message).toJson)
+            _ = println(request.toCurl)
             authScheme <- ZIO
               .service[Authentication.Service]
               .flatMap(_.getAuthentication())
@@ -73,10 +77,14 @@ object GithubApi {
     DeriveJsonDecoder.gen[CommentResponse]
   final case class Topics(names: Seq[String])
   final case class CommentResponse(
-      htmlUrl: String,
-      issueUrl: String,
+      @jsonField("html_url") htmlUrl: String,
+      @jsonField("issue_url") issueUrl: String,
       body: String
   )
+
+  implicit val commentBodyEncoder: JsonEncoder[CommentBody] =
+    DeriveJsonEncoder.gen[CommentBody]
+  final case class CommentBody(body: String)
 
   type GithubApiService = Has[Service]
 
