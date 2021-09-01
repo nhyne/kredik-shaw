@@ -5,7 +5,7 @@ import zio.magic._
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import dependencies.{DependencyConverter, DependencyWalker}
-import git.Git
+import git.{Authentication, Git, GithubApi}
 import kubernetes.Kubernetes
 import prom.Metrics
 import zio.logging._
@@ -62,7 +62,9 @@ object Main extends App {
         Metrics.live,
         Git.live,
         Kubernetes.live,
-        DependencyWalker.live
+        DependencyWalker.live,
+        GithubApi.live,
+        Authentication.live
       )
       .exitCode
   }

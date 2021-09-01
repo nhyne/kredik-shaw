@@ -7,6 +7,7 @@ import dependencies.DependencyWalker
 import git.Git.GitCliService
 import prom.Metrics.MetricsService
 import dependencies.DependencyWalker.DependencyWalkerService
+import git.Authentication.GitAuthenticationService
 import template.RepoConfig
 import zio.json._
 import zio.logging._
@@ -15,6 +16,7 @@ import zio.config.yaml.YamlConfigSource
 import template.Template.TemplateService
 import git.Git.{PullRequestAction, PullRequestEvent}
 import git.Git
+import git.GithubApi.GithubApiService
 import kubernetes.Kubernetes
 import kubernetes.Kubernetes.KubernetesService
 import zio.duration.Duration.fromMillis
@@ -31,6 +33,8 @@ object WebhookApi {
     with GitCliService
     with KubernetesService
     with DependencyWalkerService
+    with GithubApiService
+    with GitAuthenticationService
     with Has[ApplicationConfig]
 
   private val apiRoot = Root / "api" / "ahab-webhook"

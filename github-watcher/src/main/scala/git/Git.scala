@@ -27,7 +27,9 @@ object Git {
       state: String, // TODO: Should be a union type when it is used
       head: Branch,
       base: Branch
-  )
+  ) {
+    def getBaseName() = base.repo.fullName
+  }
 
   final case class Branch(
       ref: String,
