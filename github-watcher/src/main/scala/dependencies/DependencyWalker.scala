@@ -1,7 +1,7 @@
 package dependencies
 
 import dependencies.DependencyConverter.DependencyConverterService
-import git.Git.GitCliService
+import git.GitCli.GitCliService
 import template.{Dependency, RepoConfig}
 import template.RepoConfig.ImageTag
 import zio.blocking.Blocking

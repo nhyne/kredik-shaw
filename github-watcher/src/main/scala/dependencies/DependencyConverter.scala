@@ -1,6 +1,6 @@
 package dependencies
 
-import git.Git
+import git.GitCli
 import template.{Dependency, RepoConfig}
 import zio.blocking.Blocking
 import zio.config.read
@@ -10,12 +10,13 @@ import zio.process.Command
 import zio._
 import zio.random.Random
 import zio.config.yaml.YamlConfigSource
-import git.Git.{Branch, GitCliService, Repository}
+import git.GitCli.{Branch, GitCliService, Repository}
 import template.RepoConfig.ImageTag
 import zio.logging.{Logging, log}
 
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
+  private val watcherConfFileShort = ".watcher.yml"
 
   private type Env = Blocking with Random with GitCliService with Logging
 
@@ -47,7 +48,7 @@ object DependencyConverter {
           _ <- Files.createDirectory(repoDir)
           repo = Repository.fromNameAndOwner(dependency.name, dependency.owner)
           _ <- ZIO
-            .service[Git.Service]
+            .service[GitCli.Service]
             .flatMap(git =>
               git.gitCloneDepth(
                 repo,
@@ -59,14 +60,20 @@ object DependencyConverter {
                 repoDir
               )
             )
-          configFile = repoDir./(
-            watcherConfFile
-          ) // TODO: if a repo does not specify this we should suggest adding it instead of erroring
           configSource <- ZIO
             .fromEither(
-              YamlConfigSource.fromYamlFile(
-                configFile.toFile
-              )
+              YamlConfigSource
+                .fromYamlFile(
+                  repoDir
+                    ./(
+                      watcherConfFile
+                    )
+                    .toFile
+                )
+                .orElse(
+                  YamlConfigSource
+                    .fromYamlFile(repoDir./(watcherConfFileShort).toFile)
+                )
             )
             .tapError(_ =>
               log.error(

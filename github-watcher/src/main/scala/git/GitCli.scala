@@ -12,7 +12,7 @@ import zio.nio.file.Files
 import zio.process.{Command, CommandError}
 import zio.random.Random
 
-object Git {
+object GitCli {
 
   final case class PullRequestEvent(
       action: PullRequestAction,
@@ -24,10 +24,14 @@ object Git {
       url: String,
       id: Long,
       number: Int,
-      state: String, // TODO: Should be a union type
+      state: String, // TODO: Should be a union type when it is used
       head: Branch,
       base: Branch
-  )
+  ) {
+    def getBaseFullName() = base.repo.fullName
+    def getBaseName() = base.repo.name
+    def getBaseOwner() = base.repo.owner.login
+  }
 
   final case class Branch(
       ref: String,
@@ -60,7 +64,6 @@ object Git {
       )
   }
 
-  // TODO: Would be better if I can just pull the owner from the request body. Not sure if there's something different between "owner" and "organization"
   final case class Owner(login: String)
 
   implicit val ownerDecoder: JsonDecoder[Owner] = DeriveJsonDecoder.gen[Owner]

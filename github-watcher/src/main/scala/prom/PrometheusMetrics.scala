@@ -8,7 +8,7 @@ object Metrics {
 
   type MetricsService = Has[Service]
   trait Service {
-    def namespaceCreated(): Task[Unit]
+    def namespaceCreated(repository: String): Task[Unit]
   }
 
   val live: ZLayer[Registry, Throwable, Has[Service]] = ZLayer.fromEffect {
@@ -22,8 +22,8 @@ object Metrics {
       layer = new Service {
         private val metricsMap: Map[String, Counter] =
           Map(namespaceMetricName -> c)
-        override def namespaceCreated(): Task[Unit] =
-          metricsMap(namespaceMetricName).inc()
+        override def namespaceCreated(repository: String): Task[Unit] =
+          metricsMap(namespaceMetricName).inc(Array(repository))
       }
     } yield layer
   }

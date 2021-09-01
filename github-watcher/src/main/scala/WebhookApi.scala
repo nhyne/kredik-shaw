@@ -4,17 +4,20 @@ import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import dependencies.DependencyConverter.DependencyConverterService
 import dependencies.DependencyWalker
-import git.Git.GitCliService
+import git.GitCli.GitCliService
 import prom.Metrics.MetricsService
 import dependencies.DependencyWalker.DependencyWalkerService
+import git.Authentication.GitAuthenticationService
 import template.RepoConfig
 import zio.json._
 import zio.logging._
+import zio.console.putStrLn
 import zio.config._
 import zio.config.yaml.YamlConfigSource
 import template.Template.TemplateService
-import git.Git.{PullRequestAction, PullRequestEvent}
-import git.Git
+import git.GitCli.{PullRequestAction, PullRequestEvent}
+import git.{GitCli, GithubApi}
+import git.GithubApi.{GithubApiService, SBackend}
 import kubernetes.Kubernetes
 import kubernetes.Kubernetes.KubernetesService
 import zio.duration.Duration.fromMillis
@@ -31,6 +34,9 @@ object WebhookApi {
     with GitCliService
     with KubernetesService
     with DependencyWalkerService
+    with GithubApiService
+    with GitAuthenticationService
+    with Has[SBackend]
     with Has[ApplicationConfig]
 
   private val apiRoot = Root / "api" / "webhook"
@@ -40,10 +46,8 @@ object WebhookApi {
       case req @ Method.POST -> `apiRoot` =>
         post(req).mapBoth(
           cause =>
-            // TODO: Make this cleaner
-            HttpError
-              .InternalServerError(cause = Some(new Throwable(cause.toString))),
-          body => Response.text(body.toString)
+            HttpError.InternalServerError(cause = Some(new Throwable(cause))),
+          body => Response.text(body)
         )
     }
 
@@ -63,29 +67,54 @@ object WebhookApi {
     request.getBodyAsString match {
       case Some(body) =>
         for {
-          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent])
-          _ <- performEventAction(pullRequestEvent).tapError(err =>
-            log.error(s"${err.toString}")
-          )
-        } yield pullRequestEvent // TODO: Should not be returning the pull request event
-      case None => ZIO.fail("Did not receive a request body")
+          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent]) // TODO: Once we have multiple events coming in we'll need to try a few different ones
+          _ <- performEventAction(pullRequestEvent)
+            .tapError(thrown =>
+              for {
+                _ <- log.info(
+                  s"failed to process PR event: ${pullRequestEvent.pullRequest
+                    .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+                )
+                _ <- ZIO
+                  .service[GithubApi.Service]
+                  .flatMap(
+                    _.createComment(
+                      thrown.toString,
+                      pullRequestEvent.pullRequest
+                    )
+                  )
+                  .tapError(e =>
+                    log.error(
+                      s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
+                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
+                    )
+                  )
+              } yield ()
+            )
+            .forkDaemon // Forking once we have a valid body
+        } yield "OK"
+      case None => ZIO.fail("did not receive a request body")
     }
 
-  def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
+  private def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
-      case PullRequestAction.Opened => openedEvent(event).map(_.toString)
-      case PullRequestAction.Synchronize =>
-        openedEvent(event).map(
-          _.toString
-        ) // TODO: This should be its own action
+      case PullRequestAction.Opened      => openedEvent(event)
+      case PullRequestAction.Synchronize => synchronizeAction(event)
       case PullRequestAction.Closed =>
         ZIO
           .service[Kubernetes.Service]
           .flatMap(_.deletePRNamespace(event.pullRequest))
+          .mapBoth(k8sError => new Throwable(k8sError.toString), _ => ())
       case PullRequestAction.Unknown(actionType) =>
-        log.warn(s"got unknown action type: $actionType")
+        log.warn(
+          s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
+        ) *> ZIO.fail(new Throwable(s"unknown action type: $actionType"))
     }
   }
+
+  private def synchronizeAction(
+      event: PullRequestEvent
+  ): ZIO[ServerEnv, Throwable, Unit] = openedEvent(event)
 
   private def openedEvent(
       event: PullRequestEvent
@@ -97,7 +126,7 @@ object WebhookApi {
       )
       .use { path =>
         for {
-          repoDirectory <- ZIO.service[Git.Service].flatMap { git =>
+          repoDirectory <- ZIO.service[GitCli.Service].flatMap { git =>
             git.gitCloneAndMerge(
               event.pullRequest.head.repo,
               event.pullRequest.head,

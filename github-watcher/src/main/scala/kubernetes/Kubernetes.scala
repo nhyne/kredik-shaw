@@ -14,7 +14,7 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   ObjectMeta,
   Status
 }
-import git.Git.{PullRequest}
+import git.GitCli.{PullRequest}
 import prom.Metrics
 import prom.Metrics.MetricsService
 import zio.nio.core.file.Path
@@ -59,17 +59,22 @@ object Kubernetes {
       val (nsName, prNamespace) = namespaceObject(pullRequest)
       for {
         namespace <- get(nsName)
-          .foldM({
-            case NotFound => create(prNamespace)
-            case e        => ZIO.fail(e)
-          }, success => ZIO.succeed(success))
+          .foldM(
+            {
+              case NotFound =>
+                create(prNamespace).flatMap(_ =>
+                  ZIO
+                    .service[Metrics.Service]
+                    .flatMap(_.namespaceCreated(pullRequest.getBaseFullName()))
+                    .catchAll { e =>
+                      log.error(e.toString) *> ZIO.unit
+                    }
+                )
+              case e => ZIO.fail(e)
+            },
+            success => ZIO.succeed(success)
+          )
           .map(_ => nsName)
-        _ <- ZIO
-          .service[Metrics.Service]
-          .flatMap(_.namespaceCreated())
-          .catchAll { e =>
-            log.error(e.toString) *> ZIO.unit
-          }
       } yield namespace
     }
 
@@ -104,8 +109,9 @@ object Kubernetes {
 
   def namespaceName(pullRequest: PullRequest): String = {
     // TODO: This format will be bad for long repo names or those that start similarly
-    s"${pullRequest.head.repo.name}-pr-${pullRequest.number}".trim.take(63)
-  } // max length of namespace
+    s"${pullRequest.head.repo.name}-pr-${pullRequest.number}".trim
+      .take(63) // max length of namespace
+  }
   private def namespaceObject(pullRequest: PullRequest): (String, Namespace) = {
     val nsName = namespaceName(pullRequest)
     (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))
