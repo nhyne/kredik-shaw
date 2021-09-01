@@ -1,8 +1,8 @@
-val zioVersion = "1.0.9"
+val zioVersion = "1.0.11"
 val zioConfigVersion = "1.0.6"
 val zioLoggingVersion = "0.5.11"
 val scala_2_13 = "2.13.1"
-val sttpClientVersion = "3.3.13"
+val sttpClientVersion = "3.3.14"
 val tapirVersion = "0.17.19"
 val circeVersion = "0.13.0"
 val zioMetricsVersion = "1.0.12"
@@ -32,7 +32,7 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "dev.zio" %% "zio-interop-cats" % "3.1.1.0",
         "dev.zio" %% "zio-process" % "0.5.0",
         "com.coralogix" %% "zio-k8s-client" % "1.3.3",
-        "io.github.kitlangton" %% "zio-magic" % "0.3.5",
+        "io.github.kitlangton" %% "zio-magic" % "0.3.8",
         "dev.zio" %% "zio-logging-slf4j" % zioLoggingVersion,
         "dev.zio" %% "zio-logging" % zioLoggingVersion,
         "dev.zio" %% "zio-nio" % "1.0.0-RC11",
