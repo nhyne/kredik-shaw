@@ -59,17 +59,22 @@ object Kubernetes {
       val (nsName, prNamespace) = namespaceObject(pullRequest)
       for {
         namespace <- get(nsName)
-          .foldM({
-            case NotFound => create(prNamespace)
-            case e        => ZIO.fail(e)
-          }, success => ZIO.succeed(success))
+          .foldM(
+            {
+              case NotFound =>
+                create(prNamespace).flatMap(_ =>
+                  ZIO
+                    .service[Metrics.Service]
+                    .flatMap(_.namespaceCreated(pullRequest.getBaseFullName()))
+                    .catchAll { e =>
+                      log.error(e.toString) *> ZIO.unit
+                    }
+                )
+              case e => ZIO.fail(e)
+            },
+            success => ZIO.succeed(success)
+          )
           .map(_ => nsName)
-        _ <- ZIO
-          .service[Metrics.Service]
-          .flatMap(_.namespaceCreated())
-          .catchAll { e =>
-            log.error(e.toString) *> ZIO.unit
-          }
       } yield namespace
     }
 
