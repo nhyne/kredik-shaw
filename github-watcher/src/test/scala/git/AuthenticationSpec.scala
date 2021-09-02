@@ -1,9 +1,9 @@
 package git
 
-import git.Authentication.AuthenticationScheme
+import git.Authentication.{AuthenticationScheme, GitAuthenticationError}
 import zio._
 import zio.test._
-import zio.test.Assertion.equalTo
+import zio.test.Assertion._
 import zio.test.environment.{TestEnvironment, TestSystem}
 import zio.test.environment.TestSystem.Data
 import zio.magic._
@@ -17,16 +17,15 @@ object AuthenticationSpec extends DefaultRunnableSpec {
     suite("git authentication")(
       testM("valid bearer token") {
         val envData = Data(envs = Map("GITHUB_BEARER_TOKEN" -> testBearerToken))
-        val gitAuth = Authentication.live
         for {
           authValue <- ZIO
             .service[Authentication.Service]
             .flatMap(auth => auth.getAuthentication())
             .inject(
-              gitAuth,
               HttpClientZioBackend.layer(),
               TestSystem.live(envData),
-              GithubApiSpec.test
+              GithubApiSpec.test,
+              Authentication.live
             )
         } yield assert(authValue)(
           equalTo(AuthenticationScheme.Bearer(testBearerToken))
@@ -36,21 +35,31 @@ object AuthenticationSpec extends DefaultRunnableSpec {
         val envData = Data(envs =
           Map("GITHUB_USERNAME" -> testUser, "GITHUB_TOKEN" -> testToken)
         )
-        val gitAuth = Authentication.live
         for {
           authValue <- ZIO
             .service[Authentication.Service]
             .flatMap(auth => auth.getAuthentication())
             .inject(
-              gitAuth,
+              GithubApiSpec.test,
               HttpClientZioBackend.layer(),
               TestSystem.live(envData),
-              GithubApiSpec.test
+              Authentication.live
             )
         } yield assert(authValue)(
           equalTo(AuthenticationScheme.Basic(testUser, testToken))
         )
-
       }
+//      testM("missing all credential variables") {
+//        assertM(ZIO
+//          .service[Authentication.Service]
+//          .flatMap(auth => auth.getAuthentication())
+//          .inject(
+//            TestSystem.live(Data()),
+//            GithubApiSpec.test,
+//            HttpClientZioBackend.layer(),
+//            Authentication.live
+//          ))()
+//        )
+//      }
     )
 }
