@@ -8,7 +8,7 @@ import zio.process.CommandError
 import zio.random.Random
 import zio.{ExitCode, ZIO, ZLayer}
 
-object GitSpec {
+object GitCliSpec {
   val test = ZLayer.succeed(new Service {
     private def gitCommand(repository: Repository) =
       if (repository.name == "succeed") ZIO.succeed(ExitCode.success)

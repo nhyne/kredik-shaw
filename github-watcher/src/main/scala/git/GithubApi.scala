@@ -67,6 +67,19 @@ object GithubApi {
               .send(authRequest)
               .flatMap(res => ZIO.fromEither(res.body))
           } yield response
+
+        override def validateAuth(
+            credentials: AuthenticationScheme
+        ): ZIO[Has[SBackend], Throwable, Boolean] =
+          for {
+            client <- ZIO.service[SBackend]
+            noAuthRequest = basicRequest
+              .get(uri"https://api.github.com/user")
+            authRequest = AuthenticationScheme.actionOnScheme(credentials)(
+              noAuthRequest.auth.basic
+            )(noAuthRequest.auth.bearer)
+            response <- client.send(authRequest)
+          } yield response.code.isSuccess
       }
     )
 
@@ -93,6 +106,10 @@ object GithubApi {
         org: String,
         repo: String
     ): ZIO[Has[SBackend], Throwable, Topics]
+
+    def validateAuth(
+        credentials: AuthenticationScheme
+    ): ZIO[Has[SBackend], Throwable, Boolean]
 
     def createComment(
         message: String,

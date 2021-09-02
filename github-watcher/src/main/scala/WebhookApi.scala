@@ -76,7 +76,7 @@ object WebhookApi {
                     .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
                 )
                 _ <- ZIO
-                  .service[GithubApi.Service]
+                  .service[GithubApi.Service] // TODO: Add accessor helpers or look at the ZIO 2.0 method of handling this?
                   .flatMap(
                     _.createComment(
                       thrown.toString,

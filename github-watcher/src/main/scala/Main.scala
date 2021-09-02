@@ -5,6 +5,7 @@ import zio.magic._
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import dependencies.{DependencyConverter, DependencyWalker}
+import git.Authentication.GitAuthenticationError
 import git.{Authentication, GitCli, GithubApi}
 import kubernetes.Kubernetes
 import prom.Metrics
@@ -66,6 +67,11 @@ object Main extends App {
         GithubApi.live,
         Authentication.live
       )
+      .catchSome {
+        case GitAuthenticationError(message) =>
+          log.error(message) *> ZIO.fail(ExitCode.failure)
+      }
+      .inject(logger, ZEnv.live)
       .exitCode
   }
 }
