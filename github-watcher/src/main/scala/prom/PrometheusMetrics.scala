@@ -11,6 +11,13 @@ object Metrics {
     def namespaceCreated(repository: String): Task[Unit]
   }
 
+  /*
+  namespaces deleted
+  template commands being used
+  events received
+  comments posted
+  stale PR namespaces deleted
+   */
   val live: ZLayer[Registry, Throwable, Has[Service]] = ZLayer.fromEffect {
     val namespaceMetricName = "namespaces_created"
     for {

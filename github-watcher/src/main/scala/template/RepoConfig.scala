@@ -17,6 +17,9 @@ object RepoConfig {
     DeriveConfigDescriptor.descriptor[RepoConfig]
 }
 
+// TODO: Would be nice if this used refinement types to perform some validations
+//    https://zio.github.io/zio-config/docs/refined/refined_index
+//    we actually really need a refinement type or we need something else to know what the name of the repo is
 @describe("this config is for a repo watcher")
 final case class RepoConfig(
     resourceFolder: File,
@@ -27,9 +30,6 @@ final case class RepoConfig(
     dependencies: Option[Set[Dependency]]
 )
 
-// TODO: Would be nice if this used refinement types to perform some validations
-//    https://zio.github.io/zio-config/docs/refined/refined_index
-//    we actually really need a refinement type or we need something else to know what the name of the repo is
 @describe("this config is for a dependency of a repo")
 final case class Dependency(
     owner: String,
