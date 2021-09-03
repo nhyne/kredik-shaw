@@ -1,7 +1,7 @@
 package git
 
 import git.Authentication.AuthenticationScheme
-import git.GitCli.PullRequest
+import git.GitEvents.PullRequest
 import zio._
 import zio.interop.catz._
 import zio.interop.catz.implicits._

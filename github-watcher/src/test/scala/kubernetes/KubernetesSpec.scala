@@ -1,6 +1,6 @@
 package kubernetes
 
-import git.GitCli.{Branch, Owner, PullRequest, Repository}
+import git.GitEvents.{Branch, Owner, PullRequest, Repository}
 import zio.test._
 import zio.test.Assertion.equalTo
 import zio.test.environment.TestEnvironment

@@ -8,6 +8,8 @@ import git.GitCli.GitCliService
 import prom.Metrics.MetricsService
 import dependencies.DependencyWalker.DependencyWalkerService
 import git.Authentication.GitAuthenticationService
+import git.GitEvents.WebhookEvent
+import git.GitEvents.ActionVerb
 import template.RepoConfig
 import zio.json._
 import zio.logging._
@@ -15,7 +17,7 @@ import zio.console.putStrLn
 import zio.config._
 import zio.config.yaml.YamlConfigSource
 import template.Template.TemplateService
-import git.GitCli.{PullRequestAction, PullRequestEvent}
+import git.GitEvents.WebhookEvent._
 import git.{GitCli, GithubApi}
 import git.GithubApi.{GithubApiService, SBackend}
 import kubernetes.Kubernetes
@@ -65,50 +67,64 @@ object WebhookApi {
 
   private def post(request: Request) =
     request.getBodyAsString match {
-      case Some(body) =>
+      case Some(body) => {
+        val thing: Either[String, WebhookEvent] =
+          body
+            .fromJson[PullRequestEvent]
+            .orElse(body.fromJson[IssueCommentEvent])
+            .orElse(body.fromJson[LabeledEvent]) // TOOD: There's definitely a better way to do this with zio-json. Current problem is that the json coming from Github doesn't fit will with how zio-json switches on traits
         for {
-          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent]) // TODO: Once we have multiple events coming in we'll need to try a few different ones
-          _ <- performEventAction(pullRequestEvent)
-            .tapError(thrown =>
-              for {
-                _ <- log.info(
-                  s"failed to process PR event: ${pullRequestEvent.pullRequest
-                    .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+          webhookEvent <- ZIO.fromEither(thing)
+          _ <- webhookEvent match {
+            case pullRequestEvent: WebhookEvent.PullRequestEvent =>
+              performEventAction(pullRequestEvent)
+                .tapError(thrown =>
+                  for {
+                    _ <- log.info(
+                      s"failed to process PR event: ${pullRequestEvent.pullRequest
+                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+                    )
+                    _ <- ZIO
+                      .service[GithubApi.Service]
+                      .flatMap(
+                        _.createComment(
+                          thrown.toString,
+                          pullRequestEvent.pullRequest
+                        )
+                      )
+                      .tapError(e =>
+                        log.error(
+                          s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
+                            .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
+                        )
+                      )
+                  } yield ()
                 )
-                _ <- ZIO
-                  .service[GithubApi.Service]
-                  .flatMap(
-                    _.createComment(
-                      thrown.toString,
-                      pullRequestEvent.pullRequest
-                    )
-                  )
-                  .tapError(e =>
-                    log.error(
-                      s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
-                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
-                    )
-                  )
-              } yield ()
-            )
-            .forkDaemon // Forking once we have a valid body
+                .forkDaemon // Forking once we have a valid body
+            case issueCommentEvent: WebhookEvent.IssueCommentEvent => ???
+            case labelEvent: WebhookEvent.LabeledEvent             => ???
+          }
+
         } yield "OK"
+      }
       case None => ZIO.fail("did not receive a request body")
     }
 
   private def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
     event.action match {
-      case PullRequestAction.Opened      => openedEvent(event)
-      case PullRequestAction.Synchronize => synchronizeAction(event)
-      case PullRequestAction.Closed =>
+      case ActionVerb.Opened      => openedEvent(event)
+      case ActionVerb.Synchronize => synchronizeAction(event)
+      case ActionVerb.Closed =>
         ZIO
           .service[Kubernetes.Service]
           .flatMap(_.deletePRNamespace(event.pullRequest))
           .mapBoth(k8sError => new Throwable(k8sError.toString), _ => ())
-      case PullRequestAction.Unknown(actionType) =>
+      case ActionVerb.Unknown(actionType) =>
         log.warn(
           s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
         ) *> ZIO.fail(new Throwable(s"unknown action type: $actionType"))
+      case ActionVerb.Created =>
+        log.warn("got invalid verb {Created} verb for Pull Request")
     }
   }
 

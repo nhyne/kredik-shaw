@@ -4,12 +4,10 @@ import template.RepoConfig.ImageTag
 import template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
-import dependencies.DependencyConverter
 import git.GitSpec
 import template.{Dependency, RepoConfig}
 import zio.test.environment.TestEnvironment
 import zio._
-import zio.blocking.Blocking
 import zio.logging.Logging
 import zio.nio.core.file.Path
 import zio.nio.file.Files
