@@ -5,12 +5,21 @@ import zio.json._
 object GitEvents {
 
   // TODO: zio-json decoder for this trait
+  //   issue with this is that there is nothing to disambiguate the json bodies other than the bodies themselves
+  //  implicit val webhookEventDecoder: JsonDecoder[WebhookEvent] = DeriveJsonDecoder.gen[WebhookEvent]
+
   sealed trait WebhookEvent
 
   object WebhookEvent {
 
-    final case class IssueCommentEvent(action: ActionVerb, comment: Comment)
-        extends WebhookEvent
+    final case class IssueCommentEvent(
+        action: ActionVerb,
+        comment: Comment,
+        repository: Repository,
+        issue: Issue
+    ) extends WebhookEvent {
+      def getBody() = comment.body
+    }
 
     final case class PullRequestEvent(
         action: ActionVerb,
@@ -69,6 +78,7 @@ object GitEvents {
   final case class Label()
   // TODO: Do I want to also read the time is was created and see if it was a recent comment?
   final case class Comment(url: String, body: String)
+  final case class Issue(@jsonField("number") prNumber: Int)
 
   sealed trait ActionVerb
 
@@ -92,6 +102,7 @@ object GitEvents {
         case actionType    => Unknown(actionType)
       }
   }
+  implicit val issueDecoder: JsonDecoder[Issue] = DeriveJsonDecoder.gen[Issue]
   implicit val ownerDecoder: JsonDecoder[Owner] = DeriveJsonDecoder.gen[Owner]
   implicit val repositoryDecoder: JsonDecoder[Repository] =
     DeriveJsonDecoder.gen[Repository]

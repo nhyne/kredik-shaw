@@ -8,8 +8,7 @@ import git.GitCli.GitCliService
 import prom.Metrics.MetricsService
 import dependencies.DependencyWalker.DependencyWalkerService
 import git.Authentication.GitAuthenticationService
-import git.GitEvents.WebhookEvent
-import git.GitEvents.ActionVerb
+import git.GitEvents.{ActionVerb, PullRequest, WebhookEvent}
 import template.RepoConfig
 import zio.json._
 import zio.logging._
@@ -65,19 +64,19 @@ object WebhookApi {
     }
   }
 
-  private def post(request: Request) =
+  private def post(request: Request): ZIO[ServerEnv, Throwable, String] =
     request.getBodyAsString match {
       case Some(body) => {
         val thing: Either[String, WebhookEvent] =
           body
             .fromJson[PullRequestEvent]
             .orElse(body.fromJson[IssueCommentEvent])
-            .orElse(body.fromJson[LabeledEvent]) // TOOD: There's definitely a better way to do this with zio-json. Current problem is that the json coming from Github doesn't fit will with how zio-json switches on traits
+            .orElse(body.fromJson[LabeledEvent]) // see comment around Webhook event trait
         for {
-          webhookEvent <- ZIO.fromEither(thing)
+          webhookEvent <- ZIO.fromEither(thing).mapError(new Throwable(_))
           _ <- webhookEvent match {
             case pullRequestEvent: WebhookEvent.PullRequestEvent =>
-              performEventAction(pullRequestEvent)
+              pullRequestAction(pullRequestEvent)
                 .tapError(thrown =>
                   for {
                     _ <- log.info(
@@ -101,19 +100,35 @@ object WebhookApi {
                   } yield ()
                 )
                 .forkDaemon // Forking once we have a valid body
-            case issueCommentEvent: WebhookEvent.IssueCommentEvent => ???
-            case labelEvent: WebhookEvent.LabeledEvent             => ???
+            case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
+              commentAction(issueCommentEvent).forkDaemon
+            case labelEvent: WebhookEvent.LabeledEvent => ???
           }
-
         } yield "OK"
       }
-      case None => ZIO.fail("did not receive a request body")
+      case None => ZIO.fail(new Throwable("did not receive a request body"))
     }
 
-  private def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
+  private def commentAction(comment: IssueCommentEvent) = {
+    if (comment.getBody() == "rebuild") {
+      for {
+        pr <- ZIO
+          .service[GithubApi.Service]
+          .flatMap(_.getPullRequest(comment.repository, comment.issue.prNumber))
+          .tapError(err => log.error(err.toString))
+        _ <- openedPullRequest(pr)
+      } yield ()
+    } else {
+      ZIO.unit
+    }
+  }
+
+  private def pullRequestAction(
+      event: PullRequestEvent
+  ): ZIO[ServerEnv, Throwable, Unit] = {
     event.action match {
-      case ActionVerb.Opened      => openedEvent(event)
-      case ActionVerb.Synchronize => synchronizeAction(event)
+      case ActionVerb.Opened      => openedPullRequest(event.pullRequest)
+      case ActionVerb.Synchronize => synchronizedPullRequest(event.pullRequest)
       case ActionVerb.Closed =>
         ZIO
           .service[Kubernetes.Service]
@@ -128,31 +143,29 @@ object WebhookApi {
     }
   }
 
-  private def synchronizeAction(
-      event: PullRequestEvent
-  ): ZIO[ServerEnv, Throwable, Unit] = openedEvent(event)
+  private def synchronizedPullRequest(
+      pullRequest: PullRequest
+  ): ZIO[ServerEnv, Throwable, Unit] = openedPullRequest(pullRequest)
 
-  private def openedEvent(
-      event: PullRequestEvent
+  private def openedPullRequest(
+      pullRequest: PullRequest
   ): ZIO[ServerEnv, Throwable, Unit] = {
     Files
       .createTempDirectoryManaged(
-        Some(s"pr-${event.pullRequest.base.repo.name}-"),
+        Some(s"pr-${pullRequest.base.repo.name}-"),
         Seq.empty
       )
       .use { path =>
         for {
           repoDirectory <- ZIO.service[GitCli.Service].flatMap { git =>
             git.gitCloneAndMerge(
-              event.pullRequest.head.repo,
-              event.pullRequest.head,
-              event.pullRequest.base,
+              pullRequest,
               path
             )
           }
           k8sService <- ZIO.service[Kubernetes.Service]
           nsName <- k8sService
-            .createPRNamespace(event.pullRequest)
+            .createPRNamespace(pullRequest)
             .mapError(e => new Throwable(e.toString))
           configSource <- ZIO.fromEither(
             YamlConfigSource.fromYamlFile(
@@ -169,7 +182,7 @@ object WebhookApi {
               _.walkDependencies(
                 initialRepoConfig,
                 repoDirectory,
-                event.pullRequest.head.sha,
+                pullRequest.head.sha,
                 path
               )
             )

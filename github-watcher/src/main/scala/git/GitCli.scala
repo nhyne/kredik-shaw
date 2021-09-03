@@ -31,6 +31,17 @@ object GitCli {
     ): ZIO[Blocking, CommandError, ExitCode]
 
     def gitCloneAndMerge(
+        pullRequest: PullRequest,
+        cloneDir: Path
+    ): ZIO[Blocking with Random, Throwable, Path] =
+      gitCloneAndMerge(
+        pullRequest.head.repo,
+        pullRequest.head,
+        pullRequest.base,
+        cloneDir
+      )
+
+    def gitCloneAndMerge(
         repository: Repository,
         head: Branch,
         toMerge: Branch,

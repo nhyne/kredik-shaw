@@ -16,6 +16,7 @@ object Authentication {
     def getAuthentication(): ZIO[System, Nothing, AuthenticationScheme]
   }
 
+  // TODO: Should have a flag to disable validation (for local development without internet)
   private def validateAuth(
       credentials: AuthenticationScheme
   ): ZIO[Has[SBackend], Throwable, Boolean] =
