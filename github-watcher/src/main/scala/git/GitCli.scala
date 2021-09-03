@@ -7,94 +7,13 @@ import zio.console.Console
 import zio.duration.Duration.fromMillis
 import zio.json._
 import zio.logging.{Logging, log}
+import git.GitEvents._
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.process.{Command, CommandError}
 import zio.random.Random
 
 object GitCli {
-
-  final case class PullRequestEvent(
-      action: PullRequestAction,
-      number: Int,
-      @jsonField("pull_request") pullRequest: PullRequest
-  )
-
-  final case class PullRequest(
-      url: String,
-      id: Long,
-      number: Int,
-      state: String, // TODO: Should be a union type when it is used
-      head: Branch,
-      base: Branch
-  ) {
-    def getBaseFullName() = base.repo.fullName
-    def getBaseName() = base.repo.name
-    def getBaseOwner() = base.repo.owner.login
-  }
-
-  final case class Branch(
-      ref: String,
-      sha: String,
-      repo: Repository
-  ) // there are a lot more fields than just these
-
-  object Branch {
-    def fromString(branchName: String, repo: Repository) =
-      Branch(branchName, branchName, repo)
-  }
-
-  final case class Repository(
-      name: String,
-      @jsonField("full_name") fullName: String,
-      owner: Owner,
-      @jsonField("html_url") htmlUrl: String,
-      @jsonField("ssh_url") sshUrl: String,
-      @jsonField("clone_url") cloneUrl: String
-  )
-  object Repository {
-    def fromNameAndOwner(name: String, owner: String): Repository =
-      Repository(
-        name,
-        s"$name/$owner",
-        Owner(owner),
-        htmlUrl = s"https://github.com/$owner/$name",
-        sshUrl = s"git@github.com:$owner/$name.git",
-        cloneUrl = s"https://github.com/$owner/$name.git"
-      )
-  }
-
-  final case class Owner(login: String)
-
-  implicit val ownerDecoder: JsonDecoder[Owner] = DeriveJsonDecoder.gen[Owner]
-  implicit val repositoryDecoder: JsonDecoder[Repository] =
-    DeriveJsonDecoder.gen[Repository]
-  implicit val branchDecoder: JsonDecoder[Branch] =
-    DeriveJsonDecoder.gen[Branch]
-  implicit val pullRequestDecoder: JsonDecoder[PullRequest] =
-    DeriveJsonDecoder.gen[PullRequest]
-  implicit val pullRequestEventDecoder: JsonDecoder[PullRequestEvent] =
-    DeriveJsonDecoder.gen[PullRequestEvent]
-
-  sealed trait PullRequestAction
-
-  object PullRequestAction {
-    case object Opened extends PullRequestAction
-
-    case object Synchronize extends PullRequestAction
-
-    case object Closed extends PullRequestAction
-
-    final case class Unknown(`type`: String) extends PullRequestAction
-
-    implicit val prActionDecoder: JsonDecoder[PullRequestAction] =
-      JsonDecoder[String].map {
-        case "opened"      => Opened
-        case "synchronize" => Synchronize
-        case "closed"      => Closed
-        case actionType    => Unknown(actionType)
-      }
-  }
 
   type GitCliService = Has[Service]
 
@@ -110,6 +29,17 @@ object GitCli {
         depth: Int,
         cloneInto: Path
     ): ZIO[Blocking, CommandError, ExitCode]
+
+    def gitCloneAndMerge(
+        pullRequest: PullRequest,
+        cloneDir: Path
+    ): ZIO[Blocking with Random, Throwable, Path] =
+      gitCloneAndMerge(
+        pullRequest.head.repo,
+        pullRequest.head,
+        pullRequest.base,
+        cloneDir
+      )
 
     def gitCloneAndMerge(
         repository: Repository,

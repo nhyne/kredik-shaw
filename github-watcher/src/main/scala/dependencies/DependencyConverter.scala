@@ -6,12 +6,11 @@ import zio.blocking.Blocking
 import zio.config.read
 import zio.nio.core.file.Path
 import zio.nio.file.Files
-import zio.process.Command
 import zio._
 import zio.random.Random
 import zio.config.yaml.YamlConfigSource
-import git.GitCli.{Branch, GitCliService, Repository}
-import template.RepoConfig.ImageTag
+import git.GitEvents.{Branch, Repository}
+import git.GitCli.GitCliService
 import zio.logging.{Logging, log}
 
 object DependencyConverter {

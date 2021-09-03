@@ -1,8 +1,8 @@
 package git
 
-import git.GitCli.{Repository, Service}
+import git.GitCli.Service
+import git.GitEvents.{Repository, Branch}
 import zio.blocking.Blocking
-import zio.console.Console
 import zio.nio.core.file.Path
 import zio.process.CommandError
 import zio.random.Random
@@ -14,24 +14,24 @@ object GitSpec {
       if (repository.name == "succeed") ZIO.succeed(ExitCode.success)
       else ZIO.succeed(ExitCode.failure)
     override def gitClone(
-        repository: GitCli.Repository,
-        branch: GitCli.Branch,
+        repository: Repository,
+        branch: Branch,
         cloneInto: Path
     ): ZIO[Blocking, CommandError, ExitCode] = {
       gitCommand(repository)
     }
 
     override def gitCloneDepth(
-        repository: GitCli.Repository,
-        branch: GitCli.Branch,
+        repository: Repository,
+        branch: Branch,
         depth: Int,
         cloneInto: Path
     ): ZIO[Blocking, CommandError, ExitCode] = gitCommand(repository)
 
     override def gitCloneAndMerge(
-        repository: GitCli.Repository,
-        head: GitCli.Branch,
-        toMerge: GitCli.Branch,
+        repository: Repository,
+        head: Branch,
+        toMerge: Branch,
         cloneDir: Path
     ): ZIO[Blocking with Random, Throwable, Path] =
       ZIO.succeed(Path("cool"))

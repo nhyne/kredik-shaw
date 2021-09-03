@@ -8,6 +8,7 @@ import git.GitCli.GitCliService
 import prom.Metrics.MetricsService
 import dependencies.DependencyWalker.DependencyWalkerService
 import git.Authentication.GitAuthenticationService
+import git.GitEvents.{ActionVerb, PullRequest, WebhookEvent}
 import template.RepoConfig
 import zio.json._
 import zio.logging._
@@ -15,7 +16,7 @@ import zio.console.putStrLn
 import zio.config._
 import zio.config.yaml.YamlConfigSource
 import template.Template.TemplateService
-import git.GitCli.{PullRequestAction, PullRequestEvent}
+import git.GitEvents.WebhookEvent._
 import git.{GitCli, GithubApi}
 import git.GithubApi.{GithubApiService, SBackend}
 import kubernetes.Kubernetes
@@ -63,80 +64,108 @@ object WebhookApi {
     }
   }
 
-  private def post(request: Request) =
+  private def post(request: Request): ZIO[ServerEnv, Throwable, String] =
     request.getBodyAsString match {
-      case Some(body) =>
+      case Some(body) => {
+        val thing: Either[String, WebhookEvent] =
+          body
+            .fromJson[PullRequestEvent]
+            .orElse(body.fromJson[IssueCommentEvent])
+            .orElse(body.fromJson[LabeledEvent]) // see comment around Webhook event trait
         for {
-          pullRequestEvent <- ZIO.fromEither(body.fromJson[PullRequestEvent]) // TODO: Once we have multiple events coming in we'll need to try a few different ones
-          _ <- performEventAction(pullRequestEvent)
-            .tapError(thrown =>
-              for {
-                _ <- log.info(
-                  s"failed to process PR event: ${pullRequestEvent.pullRequest
-                    .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+          webhookEvent <- ZIO.fromEither(thing).mapError(new Throwable(_))
+          _ <- webhookEvent match {
+            case pullRequestEvent: WebhookEvent.PullRequestEvent =>
+              pullRequestAction(pullRequestEvent)
+                .tapError(thrown =>
+                  for {
+                    _ <- log.info(
+                      s"failed to process PR event: ${pullRequestEvent.pullRequest
+                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+                    )
+                    _ <- ZIO
+                      .service[GithubApi.Service]
+                      .flatMap(
+                        _.createComment(
+                          thrown.toString,
+                          pullRequestEvent.pullRequest
+                        )
+                      )
+                      .tapError(e =>
+                        log.error(
+                          s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
+                            .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
+                        )
+                      )
+                  } yield ()
                 )
-                _ <- ZIO
-                  .service[GithubApi.Service]
-                  .flatMap(
-                    _.createComment(
-                      thrown.toString,
-                      pullRequestEvent.pullRequest
-                    )
-                  )
-                  .tapError(e =>
-                    log.error(
-                      s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
-                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
-                    )
-                  )
-              } yield ()
-            )
-            .forkDaemon // Forking once we have a valid body
+                .forkDaemon // Forking once we have a valid body
+            case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
+              commentAction(issueCommentEvent).forkDaemon
+            case labelEvent: WebhookEvent.LabeledEvent => ???
+          }
         } yield "OK"
-      case None => ZIO.fail("did not receive a request body")
+      }
+      case None => ZIO.fail(new Throwable("did not receive a request body"))
     }
 
-  private def performEventAction(event: PullRequestEvent) = { // TODO: This error type should not be an Object
+  private def commentAction(comment: IssueCommentEvent) = {
+    if (comment.getBody() == "rebuild") {
+      for {
+        pr <- ZIO
+          .service[GithubApi.Service]
+          .flatMap(_.getPullRequest(comment.repository, comment.issue.prNumber))
+          .tapError(err => log.error(err.toString))
+        _ <- openedPullRequest(pr)
+      } yield ()
+    } else {
+      ZIO.unit
+    }
+  }
+
+  private def pullRequestAction(
+      event: PullRequestEvent
+  ): ZIO[ServerEnv, Throwable, Unit] = {
     event.action match {
-      case PullRequestAction.Opened      => openedEvent(event)
-      case PullRequestAction.Synchronize => synchronizeAction(event)
-      case PullRequestAction.Closed =>
+      case ActionVerb.Opened      => openedPullRequest(event.pullRequest)
+      case ActionVerb.Synchronize => synchronizedPullRequest(event.pullRequest)
+      case ActionVerb.Closed =>
         ZIO
           .service[Kubernetes.Service]
           .flatMap(_.deletePRNamespace(event.pullRequest))
           .mapBoth(k8sError => new Throwable(k8sError.toString), _ => ())
-      case PullRequestAction.Unknown(actionType) =>
+      case ActionVerb.Unknown(actionType) =>
         log.warn(
           s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
         ) *> ZIO.fail(new Throwable(s"unknown action type: $actionType"))
+      case ActionVerb.Created =>
+        log.warn("got invalid verb {Created} verb for Pull Request")
     }
   }
 
-  private def synchronizeAction(
-      event: PullRequestEvent
-  ): ZIO[ServerEnv, Throwable, Unit] = openedEvent(event)
+  private def synchronizedPullRequest(
+      pullRequest: PullRequest
+  ): ZIO[ServerEnv, Throwable, Unit] = openedPullRequest(pullRequest)
 
-  private def openedEvent(
-      event: PullRequestEvent
+  private def openedPullRequest(
+      pullRequest: PullRequest
   ): ZIO[ServerEnv, Throwable, Unit] = {
     Files
       .createTempDirectoryManaged(
-        Some(s"pr-${event.pullRequest.base.repo.name}-"),
+        Some(s"pr-${pullRequest.base.repo.name}-"),
         Seq.empty
       )
       .use { path =>
         for {
           repoDirectory <- ZIO.service[GitCli.Service].flatMap { git =>
             git.gitCloneAndMerge(
-              event.pullRequest.head.repo,
-              event.pullRequest.head,
-              event.pullRequest.base,
+              pullRequest,
               path
             )
           }
           k8sService <- ZIO.service[Kubernetes.Service]
           nsName <- k8sService
-            .createPRNamespace(event.pullRequest)
+            .createPRNamespace(pullRequest)
             .mapError(e => new Throwable(e.toString))
           configSource <- ZIO.fromEither(
             YamlConfigSource.fromYamlFile(
@@ -153,7 +182,7 @@ object WebhookApi {
               _.walkDependencies(
                 initialRepoConfig,
                 repoDirectory,
-                event.pullRequest.head.sha,
+                pullRequest.head.sha,
                 path
               )
             )

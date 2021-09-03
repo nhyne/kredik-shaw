@@ -1,7 +1,7 @@
 package git
 
 import git.Authentication.AuthenticationScheme
-import git.GitCli.PullRequest
+import git.GitEvents.{PullRequest, Repository}
 import zio._
 import zio.interop.catz._
 import zio.interop.catz.implicits._
@@ -23,13 +23,23 @@ object GithubApi {
         override def getTopics(
             org: String,
             repo: String
-        ): ZIO[Has[SBackend], Throwable, Topics] =
+        ): ZIO[
+          Has[SBackend] with GitAuthenticationService with System,
+          Throwable,
+          Topics
+        ] =
           for {
             client <- ZIO.service[SBackend]
-            request = basicRequest
-              .get(uri"https://api.github.com/repos/$org/$repo/topics")
-              .header("Accept", "application/vnd.github.mercy-preview+json")
-              .response(asJson[Topics])
+            authScheme <- ZIO
+              .service[Authentication.Service]
+              .flatMap(_.getAuthentication())
+            request = addAuthToRequest(
+              basicRequest
+                .get(uri"https://api.github.com/repos/$org/$repo/topics")
+                .header("Accept", "application/vnd.github.mercy-preview+json")
+                .response(asJson[Topics]),
+              authScheme
+            )
             response <- client.send(request)
             topics <- ZIO.fromEither(response.body)
           } yield topics
@@ -45,30 +55,66 @@ object GithubApi {
         ] =
           for {
             client <- ZIO.service[SBackend]
-            request = basicRequest
-              .post(
-                uri"https://api.github.com/repos/${pullRequest.getBaseOwner()}/${pullRequest
-                  .getBaseName()}/issues/${pullRequest.number}/comments"
-              )
-              .header("Accept", "application/vnd.github.v3+json")
-              .response(asJson[CommentResponse])
-              .body(CommentBody(message).toJson)
-            _ = println(request.toCurl)
             authScheme <- ZIO
               .service[Authentication.Service]
               .flatMap(_.getAuthentication())
-            authRequest = authScheme match {
-              case AuthenticationScheme.Basic(username, token) =>
-                request.auth.basic(username, token)
-              case AuthenticationScheme.Bearer(token) =>
-                request.auth.bearer(token)
-            }
+            request = addAuthToRequest(
+              basicRequest
+                .post(
+                  uri"https://api.github.com/repos/${pullRequest.getBaseOwner()}/${pullRequest
+                    .getBaseName()}/issues/${pullRequest.number}/comments"
+                )
+                .header("Accept", "application/vnd.github.v3+json")
+                .response(asJson[CommentResponse])
+                .body(CommentBody(message).toJson),
+              authScheme
+            )
             response <- client
-              .send(authRequest)
+              .send(request)
+              .flatMap(res => ZIO.fromEither(res.body))
+          } yield response
+
+        override def getPullRequest(repository: Repository, number: Int): ZIO[
+          Has[SBackend] with GitAuthenticationService with System,
+          Throwable,
+          PullRequest
+        ] =
+          for {
+            client <- ZIO.service[SBackend]
+            authScheme <- ZIO
+              .service[Authentication.Service]
+              .flatMap(_.getAuthentication())
+            request = addAuthToRequest(
+              basicRequest
+                .get(
+                  uri"https://api.github.com/repos/${repository.owner.login}/${repository.name}/pulls/$number"
+                )
+                .header("Accept", "application/vnd.github.v3+json")
+                .response(asJson[PullRequest]),
+              authScheme
+            )
+            response <- client
+              .send(request)
               .flatMap(res => ZIO.fromEither(res.body))
           } yield response
       }
     )
+
+  private def addAuthToRequest[A](
+      request: RequestT[
+        Identity,
+        Either[ResponseException[String, String], A],
+        Any
+      ],
+      auth: AuthenticationScheme
+  ): RequestT[Identity, Either[ResponseException[String, String], A], Any] = {
+    auth match {
+      case AuthenticationScheme.Basic(username, token) =>
+        request.auth.basic(username, token)
+      case AuthenticationScheme.Bearer(token) =>
+        request.auth.bearer(token)
+    }
+  }
 
   implicit val topicsDecoder: JsonDecoder[Topics] =
     DeriveJsonDecoder.gen[Topics]
@@ -92,11 +138,16 @@ object GithubApi {
     def getTopics(
         org: String,
         repo: String
-    ): ZIO[Has[SBackend], Throwable, Topics]
+    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, Topics]
 
     def createComment(
         message: String,
         pullRequest: PullRequest
     ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, CommentResponse]
+
+    def getPullRequest(
+        repository: Repository,
+        number: Int
+    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, PullRequest]
   }
 }

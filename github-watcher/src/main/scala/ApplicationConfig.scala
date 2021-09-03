@@ -7,5 +7,6 @@ object ApplicationConfig {
 // TODO: Type Refinement
 final case class ApplicationConfig(
     port: Int,
-    prometheusPort: Int
+    prometheusPort: Int,
+    organizations: List[String]
 )
