@@ -1,7 +1,8 @@
 package git
 
 import git.Authentication.AuthenticationScheme
-import git.GitEvents.{PullRequest, Repository}
+import git.GitEvents.{Branch, PullRequest, Repository}
+import git.GithubCheck.Check
 import zio._
 import zio.interop.catz._
 import zio.interop.catz.implicits._
@@ -15,6 +16,7 @@ import zio.system.System
 
 object GithubApi {
 
+  private type Env = Has[SBackend] with System with GitAuthenticationService
   type SBackend = SttpBackend[Task, ZioStreams with capabilities.WebSockets]
 
   val live: ZLayer[Has[SBackend], Throwable, GithubApiService] =
@@ -24,7 +26,7 @@ object GithubApi {
             org: String,
             repo: String
         ): ZIO[
-          Has[SBackend] with GitAuthenticationService with System,
+          Env,
           Throwable,
           Topics
         ] =
@@ -49,7 +51,7 @@ object GithubApi {
             message: String,
             pullRequest: PullRequest
         ): ZIO[
-          Has[SBackend] with GitAuthenticationService with System,
+          Env,
           Throwable,
           CommentResponse
         ] =
@@ -75,7 +77,7 @@ object GithubApi {
           } yield response
 
         override def getPullRequest(repository: Repository, number: Int): ZIO[
-          Has[SBackend] with GitAuthenticationService with System,
+          Env,
           Throwable,
           PullRequest
         ] =
@@ -97,6 +99,12 @@ object GithubApi {
               .send(request)
               .flatMap(res => ZIO.fromEither(res.body))
           } yield response
+
+        override def postCheckStatus(
+            repository: Repository,
+            branch: Branch,
+            check: Check
+        ): ZIO[Env, Throwable, Unit] = ???
       }
     )
 
@@ -138,16 +146,23 @@ object GithubApi {
     def getTopics(
         org: String,
         repo: String
-    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, Topics]
+    ): ZIO[Env, Throwable, Topics]
 
     def createComment(
         message: String,
         pullRequest: PullRequest
-    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, CommentResponse]
+    ): ZIO[Env, Throwable, CommentResponse]
 
     def getPullRequest(
         repository: Repository,
         number: Int
-    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, PullRequest]
+    ): ZIO[Env, Throwable, PullRequest]
+
+    def postCheckStatus(
+        repository: Repository,
+        branch: Branch,
+        check: Check
+    ): ZIO[Env, Throwable, Unit]
+
   }
 }
