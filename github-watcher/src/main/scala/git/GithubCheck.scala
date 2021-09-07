@@ -1,25 +1,26 @@
 package git
 
 import git.GitEvents.{Branch, Repository}
+import zio.json._
 
 import java.time.ZonedDateTime
 
 object GithubCheck {
 
-  // conclusion is required if we provide a startedAt or a status of completed
+  // conclusion is required if we provide a completedAt or a status of completed
 
   // TODO: make this apply function private to force usage of the smart constructors
-  final case class Check(
-      repositoryOwner: String,
-      repositoryName: String,
+  final case class Check private (
+      @jsonField("repository_owner") repositoryOwner: String,
+      @jsonField("repository_name") repositoryName: String,
       name: String,
       branch: Branch,
       status: Status,
       conclusion: Option[Conclusion],
-      startedAt: ZonedDateTime,
-      completedAt: Option[ZonedDateTime],
-      detailsUrl: String,
-      externalId: String,
+      @jsonField("started_at") startedAt: ZonedDateTime,
+      @jsonField("completed_at") completedAt: Option[ZonedDateTime],
+      @jsonField("details_url") detailsUrl: String,
+      @jsonField("external_id") externalId: String,
       accept: String = "application/vnd.github.v3+json"
   )
 
@@ -31,12 +32,24 @@ object GithubCheck {
     ): Check = ???
 
     // TODO: Should this take the previous check so we maintain the startedAt?
+    //    probably don't need to have a start time for a completed check?
     def checkComplete(
         repository: Repository,
         name: String,
         branch: Branch,
         status: Status
-    ): Check = ???
+    ): Check = {
+      val now = ZonedDateTime.now()
+//      Check(repositoryOwner = repository.owner,
+//        repositoryName = repository.name,
+//        name = name,
+//        branch = branch,
+//        status = status,
+//        conclusion = Some(Conclusion.Neutral),
+//
+//      )
+      ???
+    }
   }
 
   sealed trait Status
