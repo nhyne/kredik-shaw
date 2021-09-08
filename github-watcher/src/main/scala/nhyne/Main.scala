@@ -9,7 +9,7 @@ import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import nhyne.dependencies.{DependencyConverter, DependencyWalker}
 import nhyne.git.{Authentication, GitCli, GithubApi}
 import nhyne.kubernetes.Kubernetes
-import nhyne.prom.Metrics
+import nhyne.prometheus.Metrics
 import zio.logging._
 import zio.config.{ZConfig, getConfig}
 import nhyne.config.ApplicationConfig

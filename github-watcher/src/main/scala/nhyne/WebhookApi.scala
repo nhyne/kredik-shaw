@@ -6,7 +6,7 @@ import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import nhyne.dependencies.DependencyConverter.DependencyConverterService
 import nhyne.dependencies.DependencyWalker
 import nhyne.git.GitCli.GitCliService
-import nhyne.prom.Metrics.MetricsService
+import nhyne.prometheus.Metrics.MetricsService
 import nhyne.dependencies.DependencyWalker.DependencyWalkerService
 import nhyne.git.Authentication.GitAuthenticationService
 import nhyne.git.GitEvents.{ActionVerb, PullRequest, WebhookEvent}

@@ -15,8 +15,8 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   Status
 }
 import nhyne.git.GitEvents.PullRequest
-import nhyne.prom.Metrics
-import nhyne.prom.Metrics.MetricsService
+import nhyne.prometheus.Metrics
+import nhyne.prometheus.Metrics.MetricsService
 import zio.nio.core.file.Path
 import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking

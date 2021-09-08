@@ -1,12 +1,13 @@
-package nhyne.prom
+package nhyne.prometheus
 
 import zio.metrics.prometheus.helpers.counter
-import zio.metrics.prometheus.{Counter, Metric, Registry}
-import zio.{Has, Task, UIO, ULayer, ZIO, ZLayer}
+import zio.metrics.prometheus.{Counter, Registry}
+import zio.{Has, Task, ZLayer}
 
 object Metrics {
 
   type MetricsService = Has[Service]
+
   trait Service {
     def namespaceCreated(repository: String): Task[Unit]
   }
@@ -22,6 +23,7 @@ object Metrics {
       layer = new Service {
         private val metricsMap: Map[String, Counter] =
           Map(namespaceMetricName -> c)
+
         override def namespaceCreated(repository: String): Task[Unit] =
           metricsMap(namespaceMetricName).inc(Array(repository))
       }
