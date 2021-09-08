@@ -1,7 +1,7 @@
-package template
+package nhyne.template
 
-import Template.TemplateCommand
-import template.RepoConfig.ImageTag
+import nhyne.template.Template.TemplateCommand
+import nhyne.template.RepoConfig.ImageTag
 import zio.config._
 import zio.config.derivation.describe
 import zio.config.magnolia.DeriveConfigDescriptor

@@ -1,3 +1,5 @@
+package nhyne.config
+
 import zio.config.magnolia.DeriveConfigDescriptor.descriptor
 
 object ApplicationConfig {

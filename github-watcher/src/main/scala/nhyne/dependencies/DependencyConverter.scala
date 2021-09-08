@@ -1,7 +1,7 @@
-package dependencies
+package nhyne.dependencies
 
-import git.GitCli
-import template.{Dependency, RepoConfig}
+import nhyne.git.GitCli
+import nhyne.template.{Dependency, RepoConfig}
 import zio.blocking.Blocking
 import zio.config.read
 import zio.nio.core.file.Path
@@ -9,8 +9,8 @@ import zio.nio.file.Files
 import zio._
 import zio.random.Random
 import zio.config.yaml.YamlConfigSource
-import git.GitEvents.{Branch, Repository}
-import git.GitCli.GitCliService
+import nhyne.git.GitEvents.{Branch, Repository}
+import nhyne.git.GitCli.GitCliService
 import zio.logging.{Logging, log}
 
 object DependencyConverter {

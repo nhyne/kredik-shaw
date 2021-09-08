@@ -1,7 +1,7 @@
-package git
+package nhyne.git
 
-import git.GitCli.Service
-import git.GitEvents.{Repository, Branch}
+import nhyne.git.GitCli.Service
+import nhyne.git.GitEvents.{Repository, Branch}
 import zio.blocking.Blocking
 import zio.nio.core.file.Path
 import zio.process.CommandError

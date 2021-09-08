@@ -1,8 +1,8 @@
-package dependencies
+package nhyne.dependencies
 
-import template.{Dependency, RepoConfig}
-import template.RepoConfig.ImageTag
-import template.Template.TemplateCommand
+import nhyne.template.{Dependency, RepoConfig}
+import nhyne.template.RepoConfig.ImageTag
+import nhyne.template.Template.TemplateCommand
 import zio.{Has, ULayer, ZIO, ZLayer}
 import zio.blocking.Blocking
 import zio.nio.core.file.Path

@@ -1,25 +1,24 @@
+package nhyne
+
 import zio._
 import zhttp.service.EventLoopGroup
 import zhttp.service.server.ServerChannelFactory
 import zio.magic._
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
-import dependencies.{DependencyConverter, DependencyWalker}
-import git.{Authentication, GitCli, GithubApi}
-import kubernetes.Kubernetes
-import prom.Metrics
+import nhyne.dependencies.{DependencyConverter, DependencyWalker}
+import nhyne.git.{Authentication, GitCli, GithubApi}
+import nhyne.kubernetes.Kubernetes
+import nhyne.prom.Metrics
 import zio.logging._
 import zio.config.{ZConfig, getConfig}
+import nhyne.config.ApplicationConfig
 import zio.config.yaml.{YamlConfig, YamlConfigSource}
-import template.Template
+import nhyne.template.Template
 import zio.metrics.prometheus.Registry
 import zio.metrics.prometheus.exporters.Exporters
 import zio.nio.core.file.{Path => ZFPath}
-import zio.metrics.prometheus.helpers.{
-  getCurrentRegistry,
-  http,
-  initializeDefaultExports
-}
+import zio.metrics.prometheus.helpers.{getCurrentRegistry, http, initializeDefaultExports}
 
 object Main extends App {
 

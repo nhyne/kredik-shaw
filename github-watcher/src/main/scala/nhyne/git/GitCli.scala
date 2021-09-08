@@ -1,4 +1,4 @@
-package git
+package nhyne.git
 
 import zio.{ExitCode, Has, ZIO, ZLayer, random}
 import zio.blocking.Blocking
@@ -7,7 +7,7 @@ import zio.console.Console
 import zio.duration.Duration.fromMillis
 import zio.json._
 import zio.logging.{Logging, log}
-import git.GitEvents._
+import nhyne.git.GitEvents._
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.process.{Command, CommandError}
@@ -61,7 +61,7 @@ object GitCli {
         cloneInto: Path
     ) =
       Command(
-        "git",
+        "nhyne.git",
         "clone",
         s"--depth=$depth",
         s"--branch=${branch.ref}",
@@ -75,7 +75,7 @@ object GitCli {
         cloneInto: Path
     ) =
       Command(
-        "git",
+        "nhyne.git",
         "clone",
         s"--branch=${branch.ref}",
         repository.htmlUrl,
@@ -108,5 +108,5 @@ object GitCli {
   })
 
   private def gitMerge(target: Branch) =
-    Command("git", "merge", s"origin/${target.ref}")
+    Command("nhyne.git", "merge", s"origin/${target.ref}")
 }

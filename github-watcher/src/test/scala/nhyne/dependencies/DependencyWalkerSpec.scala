@@ -1,11 +1,11 @@
-package dependencies
+package nhyne.dependencies
 
-import template.RepoConfig.ImageTag
-import template.Template.TemplateCommand
+import nhyne.template.RepoConfig.ImageTag
+import nhyne.template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
-import git.GitSpec
-import template.{Dependency, RepoConfig}
+import nhyne.git.GitSpec
+import nhyne.template.{Dependency, RepoConfig}
 import zio.test.environment.TestEnvironment
 import zio._
 import zio.logging.Logging
@@ -19,7 +19,7 @@ import scala.collection.immutable.Set
 object DependencyWalkerSpec extends DefaultRunnableSpec {
   def spec: ZSpec[TestEnvironment, Any] =
     suite("repo config")(
-      testM("repo has no dependencies") {
+      testM("repo has no nhyne.dependencies") {
         val repoConfig = RepoConfig(new File("ccc"), TemplateCommand.Helm, None)
         Files
           .createTempDirectoryManaged(None, Seq.empty)
