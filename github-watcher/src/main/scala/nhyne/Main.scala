@@ -18,7 +18,11 @@ import nhyne.template.Template
 import zio.metrics.prometheus.Registry
 import zio.metrics.prometheus.exporters.Exporters
 import zio.nio.core.file.{Path => ZFPath}
-import zio.metrics.prometheus.helpers.{getCurrentRegistry, http, initializeDefaultExports}
+import zio.metrics.prometheus.helpers.{
+  getCurrentRegistry,
+  http,
+  initializeDefaultExports
+}
 
 object Main extends App {
 
