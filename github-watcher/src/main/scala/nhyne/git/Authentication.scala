@@ -1,6 +1,6 @@
-package git
+package nhyne.git
 
-import git.GithubApi.SBackend
+import nhyne.git.GithubApi.SBackend
 import zio._
 import zio.system.{System, env}
 import sttp.client3._

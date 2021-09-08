@@ -1,7 +1,7 @@
-package git
+package nhyne.git
 
-import git.Authentication.AuthenticationScheme
-import git.GitEvents.{PullRequest, Repository}
+import nhyne.git.Authentication.AuthenticationScheme
+import nhyne.git.GitEvents.{PullRequest, Repository}
 import zio._
 import zio.interop.catz._
 import zio.interop.catz.implicits._
@@ -10,7 +10,7 @@ import sttp.capabilities
 import sttp.capabilities.zio.ZioStreams
 import sttp.client3.ziojson._
 import zio.json._
-import git.Authentication.GitAuthenticationService
+import nhyne.git.Authentication.GitAuthenticationService
 import zio.system.System
 
 object GithubApi {

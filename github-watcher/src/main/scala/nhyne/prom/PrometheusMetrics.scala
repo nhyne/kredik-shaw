@@ -1,4 +1,4 @@
-package prom
+package nhyne.prom
 
 import zio.metrics.prometheus.helpers.counter
 import zio.metrics.prometheus.{Counter, Metric, Registry}

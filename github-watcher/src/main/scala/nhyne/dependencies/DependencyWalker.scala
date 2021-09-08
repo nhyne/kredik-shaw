@@ -1,14 +1,15 @@
-package dependencies
+package nhyne.dependencies
 
-import dependencies.DependencyConverter.DependencyConverterService
-import git.GitCli.GitCliService
-import template.{Dependency, RepoConfig}
-import template.RepoConfig.ImageTag
+import nhyne.dependencies.DependencyConverter.DependencyConverterService
+import nhyne.git.GitCli.GitCliService
+import nhyne.template.{Dependency, RepoConfig}
+import nhyne.template.RepoConfig.ImageTag
 import zio.blocking.Blocking
 import zio.logging.Logging
 import zio.{Has, Ref, ZIO, ZLayer}
 import zio.nio.core.file.Path
 import zio.random.Random
+import nhyne.config.ApplicationConfig
 
 import scala.collection.immutable.Set
 
@@ -18,6 +19,7 @@ object DependencyWalker {
     with DependencyConverterService
     with GitCliService
     with Logging
+//    with Has[ApplicationConfig]
 
   type DependencyWalkerService = Has[Service]
 
@@ -82,7 +84,7 @@ object DependencyWalker {
           seen <- seenDepsRef.get
           shouldProcess = !seen.contains(dep)
           maybeNewDependenciesToProcess <- if (shouldProcess)
-            ZIO.service[dependencies.DependencyConverter.Service].flatMap {
+            ZIO.service[DependencyConverter.Service].flatMap {
               depService =>
                 depService.dependencyToRepoConfig(dep, workingDir).flatMap {
                   case (rc, path) =>

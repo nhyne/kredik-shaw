@@ -1,6 +1,6 @@
-package template
+package nhyne.template
 
-import template.RepoConfig.ImageTag
+import nhyne.template.RepoConfig.ImageTag
 import zio.process._
 import zio._
 import zio.blocking.Blocking

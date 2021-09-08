@@ -1,13 +1,13 @@
-package kubernetes
+package nhyne.kubernetes
 
-import git.GitEvents.{Branch, Owner, PullRequest, Repository}
+import nhyne.git.GitEvents.{Branch, Owner, PullRequest, Repository}
 import zio.test._
 import zio.test.Assertion.equalTo
 import zio.test.environment.TestEnvironment
 
 object KubernetesSpec extends DefaultRunnableSpec {
   val spec: ZSpec[TestEnvironment, Any] =
-    suite("kubernetes")(
+    suite("nhyne.kubernetes")(
       test("basic namespace name creation") {
         val branch = Branch(
           "ref",

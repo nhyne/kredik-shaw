@@ -1,4 +1,4 @@
-package kubernetes
+package nhyne.kubernetes
 
 import com.coralogix.zio.k8s.client.model.PropagationPolicy
 import com.coralogix.zio.k8s.client.{K8sFailure, NotFound}
@@ -14,9 +14,9 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   ObjectMeta,
   Status
 }
-import git.GitEvents.PullRequest
-import prom.Metrics
-import prom.Metrics.MetricsService
+import nhyne.git.GitEvents.PullRequest
+import nhyne.prom.Metrics
+import nhyne.prom.Metrics.MetricsService
 import zio.nio.core.file.Path
 import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking

@@ -1,4 +1,4 @@
-package git
+package nhyne.git
 
 import zio.json._
 
@@ -70,7 +70,7 @@ object GitEvents {
         s"$name/$owner",
         Owner(owner),
         htmlUrl = s"https://github.com/$owner/$name",
-        sshUrl = s"git@github.com:$owner/$name.git",
+        sshUrl = s"nhyne.git@github.com:$owner/$name.nhyne.git",
         cloneUrl = s"https://github.com/$owner/$name.git"
       )
   }

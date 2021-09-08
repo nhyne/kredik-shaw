@@ -1,26 +1,28 @@
+package nhyne
 import zhttp.service._
 import zhttp.http._
 import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
-import dependencies.DependencyConverter.DependencyConverterService
-import dependencies.DependencyWalker
-import git.GitCli.GitCliService
-import prom.Metrics.MetricsService
-import dependencies.DependencyWalker.DependencyWalkerService
-import git.Authentication.GitAuthenticationService
-import git.GitEvents.{ActionVerb, PullRequest, WebhookEvent}
+import nhyne.dependencies.DependencyConverter.DependencyConverterService
+import nhyne.dependencies.DependencyWalker
+import nhyne.git.GitCli.GitCliService
+import nhyne.prom.Metrics.MetricsService
+import nhyne.dependencies.DependencyWalker.DependencyWalkerService
+import nhyne.git.Authentication.GitAuthenticationService
+import nhyne.git.GitEvents.{ActionVerb, PullRequest, WebhookEvent}
 import template.RepoConfig
 import zio.json._
 import zio.logging._
-import zio.console.putStrLn
 import zio.config._
+import zio.console.putStrLn
+import nhyne.config.ApplicationConfig
 import zio.config.yaml.YamlConfigSource
-import template.Template.TemplateService
-import git.GitEvents.WebhookEvent._
-import git.{GitCli, GithubApi}
-import git.GithubApi.{GithubApiService, SBackend}
-import kubernetes.Kubernetes
-import kubernetes.Kubernetes.KubernetesService
+import nhyne.template.Template.TemplateService
+import nhyne.git.GitEvents.WebhookEvent._
+import nhyne.git.{GitCli, GithubApi}
+import nhyne.git.GithubApi.{GithubApiService, SBackend}
+import nhyne.kubernetes.Kubernetes
+import nhyne.kubernetes.Kubernetes.KubernetesService
 import zio.duration.Duration.fromMillis
 import zio.nio.file.Files
 
