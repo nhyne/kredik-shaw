@@ -19,11 +19,19 @@ object Template {
    * substitute the image version and the namespace -- namespace should just be an apply -n <namespace>
    *
    * Will eventually need to be able to spawn DB pods and put their values into the config
+   *
+   * Kustomize offers some options for templating things in via their plugins
+   *    https://kubectl.docs.kubernetes.io/guides/extending_kustomize/builtins/
+   * These would all work but they require us to add `transformers` and/or `generators` sections in the kustomization.yaml file
+   *    We would either have to have defaults that get overwritten or the base would not be buildable outside kredik-shaw
+   *
+   * Easiest way to do env vars would be to just create a config map with keys/values and let other things pull them in? -- can this work for an image?
    */
   object TemplateCommand {
     case object Helm extends TemplateCommand
     case object Kustomize extends TemplateCommand
     case object KustomizeHelm extends TemplateCommand
+    // case object None extends TemplateCommand
   }
 
   private def kustomizeCommand(dir: Path) =
@@ -67,7 +75,6 @@ object Template {
               )
             )
             _ <- FileChannel.open(tempFilePath, StandardOpenOption.WRITE).use {
-              // TODO: Look into if this gets cleaned up right away
               channel =>
                 channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
             }
@@ -78,9 +85,16 @@ object Template {
   }
 
   private val NAMESPACE_SUBSTITUTION = "WATCHER_NS_NAME"
-  // TODO: This needs to be better
-  //    It would be better to provide a case class of fields that are able to be substituted?
-  //    Or even just doing it in parallel for all files in the `.watcher` directory?
+  /*
+   * TODO: This needs to be better
+   *    It would be better to provide a case class of fields that are able to be substituted?
+   *    Or even just doing it in parallel for all files in the `.watcher` directory?
+   *
+   * Would be nice to just use some kustomize vars for this?
+   *    - Each repo can specify where they need it substituted
+   *    - Write one file out and have kustomize pull it in as a resource and some vars from it?
+   */
+
   private def substituteNamespace(manifests: String, namespaceName: String) =
     manifests.replace(NAMESPACE_SUBSTITUTION, namespaceName)
 

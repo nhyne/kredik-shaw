@@ -165,10 +165,6 @@ object WebhookApi {
               path
             )
           }
-          k8sService <- ZIO.service[Kubernetes.Service]
-          nsName <- k8sService
-            .createPRNamespace(pullRequest)
-            .mapError(e => new Throwable(e.toString))
           configSource <- ZIO.fromEither(
             YamlConfigSource.fromYamlFile(
               repoDirectory./(".watcher.yaml").toFile
@@ -188,6 +184,10 @@ object WebhookApi {
                 path
               )
             )
+          k8sService <- ZIO.service[Kubernetes.Service]
+          nsName <- k8sService
+            .createPRNamespace(pullRequest)
+            .mapError(e => new Throwable(e.toString))
           templateService <- ZIO.service[template.Template.Service]
           _ <- ZIO.foreach(depsWithPaths) {
             case (repoConfig, (path, imageTag)) =>
