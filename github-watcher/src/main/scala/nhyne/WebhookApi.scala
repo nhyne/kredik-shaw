@@ -1,4 +1,5 @@
 package nhyne
+import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
 import zhttp.service._
 import zhttp.http._
 import zio._
@@ -30,6 +31,7 @@ object WebhookApi {
 
   private type ServerEnv = ZEnv
     with Namespaces
+    with Deployments
     with Logging
     with TemplateService
     with DependencyConverterService
@@ -185,7 +187,7 @@ object WebhookApi {
               )
             )
           k8sService <- ZIO.service[Kubernetes.Service]
-          nsName <- k8sService
+          namespace <- k8sService
             .createPRNamespace(pullRequest)
             .mapError(e => new Throwable(e.toString))
           templateService <- ZIO.service[template.Template.Service]
@@ -196,12 +198,18 @@ object WebhookApi {
                 templatedManifests <- templateService.templateManifests(
                   repoConfig,
                   path,
-                  nsName,
+                  namespace,
                   imageTag
                 )
                 exitCode <- k8sService
-                  .applyFile(templatedManifests, nsName)
+                  .applyFile(templatedManifests, namespace)
                   .exitCode
+                _ <- templateService
+                  .injectEnvVarsIntoDeployments(
+                    namespace,
+                    Map("AHAB_ENVIRONMENT" -> "TRUE")
+                  )
+                  .mapError(_ => new Throwable("boooo"))
               } yield repoConfig -> exitCode
           }
         } yield ()

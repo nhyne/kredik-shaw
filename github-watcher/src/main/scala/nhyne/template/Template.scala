@@ -1,5 +1,6 @@
 package nhyne.template
 
+import com.coralogix.zio.k8s.client.K8sFailure
 import nhyne.template.RepoConfig.ImageTag
 import zio.process._
 import zio._
@@ -10,6 +11,14 @@ import zio.nio.file.Files
 
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
+import com.coralogix.zio.k8s.client.apps.v1.deployments.{
+  Deployments,
+  getAll,
+  replace
+}
+import com.coralogix.zio.k8s.client.model.K8sNamespace
+import com.coralogix.zio.k8s.model.apps.v1.Deployment
+import com.coralogix.zio.k8s.model.core.v1.EnvVar
 
 object Template {
 
@@ -57,13 +66,13 @@ object Template {
         override def templateManifests(
             repoConfig: RepoConfig,
             repoFolder: Path,
-            namespaceName: String,
+            namespace: K8sNamespace,
             imageTag: ImageTag
         ): ZIO[Blocking, Throwable, Path] = {
           for {
             templateOutput <- template(repoFolder, repoConfig)
               .map(
-                substituteNamespace(_, namespaceName)
+                substituteNamespace(_, namespace.value)
               )
               .map(substituteImage(_, imageTag))
             tempFilePath <- Files.createTempFile(
@@ -80,6 +89,20 @@ object Template {
             }
           } yield tempFilePath
         }
+        override def injectEnvVarsIntoDeployments(
+            namespace: K8sNamespace,
+            envVars: Map[String, String]
+        ): ZIO[Deployments, K8sFailure, Unit] = {
+          val deploys = getAll(Some(namespace))
+          deploys
+            .mapMParUnordered(20)(updateDeployEnvVars(_, envVars))
+            .foreach { updatedDeploy =>
+              updatedDeploy.getName.flatMap(name =>
+                replace(name, updatedDeploy, namespace)
+              )
+            }
+        }
+
       }
     }
   }
@@ -106,9 +129,40 @@ object Template {
     def templateManifests(
         repoConfig: RepoConfig,
         repoFolder: Path,
-        namespaceName: String,
+        namespace: K8sNamespace,
         imageTag: ImageTag
     ): ZIO[Blocking, Throwable, Path]
+
+    def injectEnvVarsIntoDeployments(
+        namespace: K8sNamespace,
+        envVars: Map[String, String]
+    ): ZIO[Deployments, K8sFailure, Unit]
+  }
+
+  private def updateDeployEnvVars(
+      deploy: Deployment,
+      envVars: Map[String, String]
+  ): IO[K8sFailure, Deployment] = {
+    val k8sEnvVars = envVars.map {
+      case (key, value) =>
+        EnvVar(key, value)
+    }
+
+    for {
+      spec <- deploy.getSpec
+      template <- spec.getTemplate
+      templateSpec <- template.getSpec
+      containers <- templateSpec.getContainers
+      updatedContainers = containers.map { container =>
+        val updatedEnv =
+          container.env.map(v => v ++ k8sEnvVars).getOrElse(k8sEnvVars.toVector)
+        container.copy(env = updatedEnv)
+      }
+      newTemplateSpec = templateSpec.copy(containers = updatedContainers)
+      newTemplate = template.copy(spec = newTemplateSpec)
+      newSpec = spec.copy(template = newTemplate)
+      finalDeploy = deploy.copy(spec = newSpec)
+    } yield finalDeploy
   }
 
 }
