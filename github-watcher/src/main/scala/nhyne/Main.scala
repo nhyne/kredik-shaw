@@ -14,6 +14,7 @@ import nhyne.prometheus.Metrics
 import zio.logging._
 import zio.config.{ZConfig, getConfig}
 import nhyne.config.ApplicationConfig
+import nhyne.git.Authentication.GitAuthenticationError
 import zio.config.yaml.{YamlConfig, YamlConfigSource}
 import nhyne.template.Template
 import zio.metrics.prometheus.Registry
@@ -71,6 +72,11 @@ object Main extends App {
         GithubApi.live,
         Authentication.live
       )
+      .catchSome {
+        case GitAuthenticationError(message) =>
+          log.error(message) *> ZIO.fail(ExitCode.failure)
+      }
+      .inject(logger, ZEnv.live)
       .exitCode
   }
 }

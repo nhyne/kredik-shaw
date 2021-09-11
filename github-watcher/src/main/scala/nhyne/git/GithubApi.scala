@@ -97,6 +97,19 @@ object GithubApi {
               .send(request)
               .flatMap(res => ZIO.fromEither(res.body))
           } yield response
+
+        override def validateAuth(
+            credentials: AuthenticationScheme
+        ): ZIO[Has[SBackend], Throwable, Boolean] =
+          for {
+            client <- ZIO.service[SBackend]
+            noAuthRequest = basicRequest
+              .get(uri"https://api.github.com/user")
+            authRequest = AuthenticationScheme.actionOnScheme(credentials)(
+              noAuthRequest.auth.basic
+            )(noAuthRequest.auth.bearer)
+            response <- client.send(authRequest)
+          } yield response.code.isSuccess
       }
     )
 
@@ -149,5 +162,9 @@ object GithubApi {
         repository: Repository,
         number: Int
     ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, PullRequest]
+
+    def validateAuth(
+        credentials: AuthenticationScheme
+    ): ZIO[Has[SBackend], Throwable, Boolean]
   }
 }

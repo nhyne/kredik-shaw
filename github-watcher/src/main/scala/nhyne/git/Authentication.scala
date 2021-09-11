@@ -1,6 +1,6 @@
 package nhyne.git
 
-import nhyne.git.GithubApi.SBackend
+import nhyne.git.GithubApi.{GithubApiService, SBackend}
 import zio._
 import zio.system.{System, env}
 import sttp.client3._
@@ -13,56 +13,34 @@ object Authentication {
 
   type GitAuthenticationService = Has[Service]
   trait Service {
-    def getAuthentication(): ZIO[System, Nothing, AuthenticationScheme]
+    def getAuthentication(): UIO[AuthenticationScheme]
   }
-
-  // TODO: Should have a flag to disable validation (for local development without internet)
-  private def validateAuth(
-      credentials: AuthenticationScheme
-  ): ZIO[Has[SBackend], Throwable, Boolean] =
-    for {
-      client <- ZIO.service[SBackend]
-      noAuthRequest = basicRequest
-        .get(uri"https://api.github.com/user")
-      authRequest = AuthenticationScheme.actionOnScheme(credentials)(
-        noAuthRequest.auth.basic
-      )(noAuthRequest.auth.bearer)
-      response <- client.send(authRequest)
-    } yield response.code.isSuccess
 
   final case class GitAuthenticationError(message: String)
 
-  val live: ZLayer[Has[SBackend] with System, Object, Has[Service]] =
+  val live: ZLayer[Has[SBackend] with System with GithubApiService, Object, Has[
+    Service
+  ]] =
     ZLayer.fromEffect(for {
-      gitBearer <- env(GITHUB_BEARER_TOKEN).mapError(e =>
-        GitAuthenticationError(s"Could not read $GITHUB_BEARER_TOKEN: $e")
-      )
-      authentication <- ZIO
-        .fromOption(gitBearer.map(AuthenticationScheme.Bearer))
-        .catchAll(_ =>
-          for {
-            gitUsername <- env(GITHUB_USERNAME).flatMap(ZIO.fromOption(_))
-            gitToken <- env(GITHUB_TOKEN).flatMap(ZIO.fromOption(_))
-          } yield AuthenticationScheme.Basic(gitUsername, gitToken)
+      authentication <- readAuthVars()
+      isValid <- ZIO
+        .service[GithubApi.Service]
+        .flatMap(
+          _.validateAuth(authentication).mapError(authFailure =>
+            GitAuthenticationError(s"Could not validate auth: $authFailure")
+          )
         )
-        .mapError(_ =>
+      _ <- ZIO
+        .fail(
           GitAuthenticationError(
-            "Could not find credentials, tried Bearer and Basic"
+            "Provided credentials could not make valid request to Github API"
           )
         )
-      _ <- validateAuth(authentication).flatMap(isValid =>
-        if (isValid) ZIO.unit
-        else
-          ZIO.fail(
-            GitAuthenticationError(
-              "Provided credentials could not make valid request to Github API"
-            )
-          )
-      )
+        .when(!isValid)
     } yield new Service {
       private val auth: AuthenticationScheme = authentication
-      override def getAuthentication()
-          : ZIO[System, Nothing, AuthenticationScheme] = ZIO.succeed(auth)
+      override def getAuthentication(): UIO[AuthenticationScheme] =
+        ZIO.succeed(auth)
     })
 
   sealed trait AuthenticationScheme
@@ -82,4 +60,30 @@ object Authentication {
     }
   }
 
+  private def readAuthVars() =
+    for {
+      gitBearer <- env(GITHUB_BEARER_TOKEN).mapError(e =>
+        GitAuthenticationError(s"Could not read $GITHUB_BEARER_TOKEN: $e")
+      )
+      authentication <- ZIO
+        .fromOption(gitBearer.map(AuthenticationScheme.Bearer))
+        .catchAll {
+          case None =>
+            for {
+              gitUsername <- env(GITHUB_USERNAME).flatMap(ZIO.fromOption(_))
+              gitToken <- env(GITHUB_TOKEN).flatMap(ZIO.fromOption(_))
+            } yield AuthenticationScheme.Basic(gitUsername, gitToken)
+          case Some(_) =>
+            ZIO.fail(
+              GitAuthenticationError(
+                "Could not find credentials, tried Bearer and Basic"
+              )
+            )
+        }
+        .mapError(_ =>
+          GitAuthenticationError(
+            "Could not find credentials, tried Bearer and Basic"
+          )
+        )
+    } yield authentication
 }
