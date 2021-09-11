@@ -6,7 +6,7 @@ import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
 import zio.blocking.Blocking
 import zio.logging.Logging
-import zio.{Has, Ref, ZIO, ZLayer}
+import zio.{Has, Ref, ZEnv, ZIO, ZLayer}
 import zio.nio.core.file.Path
 import zio.random.Random
 import nhyne.config.ApplicationConfig
@@ -14,8 +14,7 @@ import nhyne.config.ApplicationConfig
 import scala.collection.immutable.Set
 
 object DependencyWalker {
-  private type Env = Blocking
-    with Random
+  private type Env = ZEnv
     with DependencyConverterService
     with GitCliService
     with Logging

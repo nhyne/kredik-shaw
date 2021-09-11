@@ -23,6 +23,7 @@ object GitCli {
         branch: Branch,
         cloneInto: Path
     ): ZIO[Blocking, CommandError, ExitCode]
+
     def gitCloneDepth(
         repository: Repository,
         branch: Branch,
@@ -59,7 +60,7 @@ object GitCli {
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ) =
+    ): ZIO[Blocking, CommandError, ExitCode] =
       Command(
         "git",
         "clone",
@@ -73,7 +74,7 @@ object GitCli {
         repository: Repository,
         branch: Branch,
         cloneInto: Path
-    ) =
+    ): ZIO[Blocking, CommandError, ExitCode] =
       Command(
         "git",
         "clone",

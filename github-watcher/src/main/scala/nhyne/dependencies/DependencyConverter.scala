@@ -17,7 +17,7 @@ object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
   private val watcherConfFileShort = ".watcher.yml"
 
-  private type Env = Blocking with Random with GitCliService with Logging
+  private type Env = ZEnv with GitCliService with Logging
 
   type DependencyConverterService = Has[Service]
   trait Service {

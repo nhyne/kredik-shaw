@@ -4,7 +4,7 @@ import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
-import nhyne.git.GitSpec
+import nhyne.git.{GitCli, GitCliSpec, GitSpec}
 import nhyne.template.{Dependency, RepoConfig}
 import zio.test.environment.TestEnvironment
 import zio._
@@ -92,8 +92,9 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
       }
     ).injectSome(
       DependencyConverterSpec.MockDependencyConverter.test,
-      GitSpec.test,
+//      GitSpec.test,
       Logging.console(),
-      DependencyWalker.live
+      DependencyWalker.live,
+      GitCliSpec.test
     )
 }

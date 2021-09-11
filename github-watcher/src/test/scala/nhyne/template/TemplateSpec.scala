@@ -2,25 +2,8 @@ package nhyne.template
 
 import com.coralogix.zio.k8s.quicklens._
 import com.softwaremill.quicklens._
-import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
-import com.coralogix.zio.k8s.client.{
-  K8sFailure,
-  Resource,
-  ResourceDeleteAll,
-  ResourceStatus,
-  Subresource,
-  model
-}
-import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments.{
-  Service => DeployService
-}
-import com.coralogix.zio.k8s.model.apps.v1.{
-  Deployment,
-  DeploymentSpec,
-  DeploymentStatus
-}
+import com.coralogix.zio.k8s.model.apps.v1.{Deployment, DeploymentSpec}
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.LabelSelector
-import com.coralogix.zio.k8s.model.autoscaling.v1.Scale
 import com.coralogix.zio.k8s.model.core.v1.{
   Container,
   EnvVar,
@@ -28,11 +11,8 @@ import com.coralogix.zio.k8s.model.core.v1.{
   PodTemplateSpec
 }
 import nhyne.template.Template.{Service, TemplateService, updateDeployEnvVars}
-import zio.blocking.Blocking
-import zio.nio.core.file.Path
 import zio.test.environment.TestEnvironment
 import zio.test._
-import zio.{ULayer, ZIO, ZLayer}
 import zio.test.Assertion._
 
 object TemplateSpec extends DefaultRunnableSpec {

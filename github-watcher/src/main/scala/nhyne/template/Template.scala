@@ -40,7 +40,7 @@ object Template {
     case object Helm extends TemplateCommand
     case object Kustomize extends TemplateCommand
     case object KustomizeHelm extends TemplateCommand
-    // case object None extends TemplateCommand
+    // case object None extends TemplateCommand -- this would essentially just read all the files into a string?
   }
 
   private def kustomizeCommand(dir: Path) =
