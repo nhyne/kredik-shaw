@@ -4,7 +4,7 @@ import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
-import nhyne.git.{GitCli, GitCliSpec, GitSpec}
+import nhyne.git.{GitCli, GitCliSpec}
 import nhyne.template.{Dependency, RepoConfig}
 import zio.test.environment.TestEnvironment
 import zio._

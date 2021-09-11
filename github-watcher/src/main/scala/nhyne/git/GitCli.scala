@@ -34,24 +34,7 @@ object GitCli {
     def gitCloneAndMerge(
         pullRequest: PullRequest,
         cloneDir: Path
-    ): ZIO[Blocking with Random, Throwable, Path] =
-      gitCloneAndMerge(
-        pullRequest.head.repo,
-        pullRequest.head,
-        pullRequest.base,
-        cloneDir
-      )
-
-    def gitCloneAndMerge(
-        repository: Repository,
-        head: Branch,
-        toMerge: Branch,
-        cloneDir: Path
-    ): ZIO[
-      Blocking with Random,
-      Throwable,
-      Path
-    ]
+    ): ZIO[Blocking, Throwable, ExitCode]
   }
 
   val live = ZLayer.succeed(new Service {
@@ -84,28 +67,23 @@ object GitCli {
       ).exitCode
 
     override def gitCloneAndMerge(
-        repository: Repository,
-        head: Branch,
-        toMerge: Branch,
+        pullRequest: PullRequest,
         cloneInto: Path
     ): ZIO[
-      Blocking with Random,
+      Blocking,
       Throwable,
-      Path
+      ExitCode
     ] =
       for {
-        folderName <- random.nextUUID
-        folderPath = cloneInto./(folderName.toString)
-        _ <- Files.createDirectory(folderPath)
         _ <- gitClone(
-          repository,
-          head,
-          folderPath
+          pullRequest.head.repo,
+          pullRequest.head,
+          cloneInto
         )
-        _ <- gitMerge(toMerge)
-          .workingDirectory(folderPath.toFile)
+        exitCode <- gitMerge(pullRequest.base)
+          .workingDirectory(cloneInto.toFile)
           .successfulExitCode
-      } yield folderPath
+      } yield exitCode
   })
 
   private def gitMerge(target: Branch) =

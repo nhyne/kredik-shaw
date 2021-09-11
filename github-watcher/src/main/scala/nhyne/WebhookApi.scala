@@ -172,10 +172,13 @@ object WebhookApi {
       )
       .use { path =>
         for {
-          repoDirectory <- ZIO.service[GitCli.Service].flatMap { git =>
+          folderName <- random.nextUUID
+          repoDirectory = path./(folderName.toString)
+          _ <- Files.createDirectory(repoDirectory)
+          _ <- ZIO.service[GitCli.Service].flatMap { git =>
             git.gitCloneAndMerge(
               pullRequest,
-              path
+              repoDirectory
             )
           }
           configSource <- ZIO.fromEither(

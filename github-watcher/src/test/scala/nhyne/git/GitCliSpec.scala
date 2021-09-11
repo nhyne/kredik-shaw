@@ -1,6 +1,7 @@
 package nhyne.git
 
 import nhyne.git.GitCli.Service
+import nhyne.git.GitEvents.PullRequest
 import zio._
 import zio.blocking.Blocking
 import zio.nio.channels.FileChannel
@@ -69,14 +70,12 @@ object GitCliSpec {
     }
 
     override def gitCloneAndMerge(
-        repository: GitEvents.Repository,
-        head: GitEvents.Branch,
-        toMerge: GitEvents.Branch,
+        pullRequest: PullRequest,
         cloneDir: Path
-    ): ZIO[Blocking with Random, Throwable, Path] = {
-      if (repository.name == "failure")
+    ): ZIO[Blocking, Throwable, ExitCode] = {
+      if (pullRequest.number == 1)
         ZIO.fail(CommandError.NonZeroErrorCode(ExitCode(2)))
-      else ZIO.succeed(Path(repository.name))
+      else ZIO.succeed(ExitCode.success)
     }
   })
 }
