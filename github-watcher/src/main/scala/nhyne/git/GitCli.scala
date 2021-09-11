@@ -61,7 +61,7 @@ object GitCli {
         cloneInto: Path
     ) =
       Command(
-        "nhyne.git",
+        "git",
         "clone",
         s"--depth=$depth",
         s"--branch=${branch.ref}",
@@ -75,7 +75,7 @@ object GitCli {
         cloneInto: Path
     ) =
       Command(
-        "nhyne.git",
+        "git",
         "clone",
         s"--branch=${branch.ref}",
         repository.htmlUrl,
@@ -108,5 +108,5 @@ object GitCli {
   })
 
   private def gitMerge(target: Branch) =
-    Command("nhyne.git", "merge", s"origin/${target.ref}")
+    Command("git", "merge", s"origin/${target.ref}")
 }

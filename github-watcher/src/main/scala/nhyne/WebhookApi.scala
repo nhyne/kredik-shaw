@@ -1,4 +1,5 @@
 package nhyne
+import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
 import zhttp.service._
 import zhttp.http._
 import zio._
@@ -30,6 +31,7 @@ object WebhookApi {
 
   private type ServerEnv = ZEnv
     with Namespaces
+    with Deployments
     with Logging
     with TemplateService
     with DependencyConverterService
@@ -111,9 +113,20 @@ object WebhookApi {
       case None => ZIO.fail(new Throwable("did not receive a request body"))
     }
 
+  // TODO: Should come up with a series of commands
+  /*
+   * rebuild: just redoes templating and applies
+   * restart: deletes namespace and then rebuilds
+   * destroy: destroys namespace
+   * status: gets status of object? -- could do a status: deployments which would get the status of all deploys in the namespace and comment them
+   *
+   */
   private def commentAction(comment: IssueCommentEvent) = {
     if (comment.getBody() == "rebuild") {
       for {
+        _ <- log.info(
+          s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
+        )
         pr <- ZIO
           .service[GithubApi.Service]
           .flatMap(_.getPullRequest(comment.repository, comment.issue.prNumber))
@@ -185,7 +198,7 @@ object WebhookApi {
               )
             )
           k8sService <- ZIO.service[Kubernetes.Service]
-          nsName <- k8sService
+          namespace <- k8sService
             .createPRNamespace(pullRequest)
             .mapError(e => new Throwable(e.toString))
           templateService <- ZIO.service[template.Template.Service]
@@ -196,12 +209,19 @@ object WebhookApi {
                 templatedManifests <- templateService.templateManifests(
                   repoConfig,
                   path,
-                  nsName,
+                  namespace,
                   imageTag
                 )
                 exitCode <- k8sService
-                  .applyFile(templatedManifests, nsName)
+                  .applyFile(templatedManifests, namespace)
                   .exitCode
+                _ <- templateService
+                  .injectEnvVarsIntoDeployments(
+                    namespace,
+                    Map("PR_ENVIRONMENT" -> "TRUE")
+                  )
+                  .tapError(e => log.error(e.toString))
+                  .mapError(e => new Throwable(e.toString))
               } yield repoConfig -> exitCode
           }
         } yield ()

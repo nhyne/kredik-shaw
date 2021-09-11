@@ -1,5 +1,6 @@
 package nhyne
 
+import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
 import zio._
 import zhttp.service.EventLoopGroup
 import zhttp.service.server.ServerChannelFactory
@@ -54,6 +55,7 @@ object Main extends App {
         ZEnv.live,
         k8sDefault,
         Namespaces.live,
+        Deployments.live,
         ServerChannelFactory.auto,
         EventLoopGroup.auto(5),
         logger,

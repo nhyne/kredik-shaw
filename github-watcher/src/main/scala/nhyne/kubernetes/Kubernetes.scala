@@ -1,6 +1,6 @@
 package nhyne.kubernetes
 
-import com.coralogix.zio.k8s.client.model.PropagationPolicy
+import com.coralogix.zio.k8s.client.model.{K8sNamespace, PropagationPolicy}
 import com.coralogix.zio.k8s.client.{K8sFailure, NotFound}
 import com.coralogix.zio.k8s.client.v1.namespaces.{
   Namespaces,
@@ -29,11 +29,15 @@ object Kubernetes {
   trait Service {
     def applyFile(
         directory: Path,
-        namespaceName: String
+        namespace: K8sNamespace
     ): ZIO[Blocking, CommandError, ExitCode]
     def createPRNamespace(
         pullRequest: PullRequest
-    ): ZIO[Namespaces with MetricsService with Logging, K8sFailure, String]
+    ): ZIO[
+      Namespaces with MetricsService with Logging,
+      K8sFailure,
+      K8sNamespace
+    ]
     def deletePRNamespace(
         pullRequest: PullRequest
     ): ZIO[Logging with Namespaces, K8sFailure, Status]
@@ -42,20 +46,24 @@ object Kubernetes {
   val live = ZLayer.succeed(new Service {
     override def applyFile(
         directory: Path,
-        namespaceName: String
+        namespace: K8sNamespace
     ): ZIO[Blocking, CommandError, ExitCode] =
       Command(
         "kubectl",
         "apply",
         "-n",
-        namespaceName,
+        namespace.value,
         "-f",
         directory.toString()
       ).exitCode
 
     override def createPRNamespace(
         pullRequest: PullRequest
-    ): ZIO[Namespaces with MetricsService with Logging, K8sFailure, String] = {
+    ): ZIO[
+      Namespaces with MetricsService with Logging,
+      K8sFailure,
+      K8sNamespace
+    ] = {
       val (nsName, prNamespace) = namespaceObject(pullRequest)
       for {
         namespace <- get(nsName)
@@ -74,7 +82,7 @@ object Kubernetes {
             },
             success => ZIO.succeed(success)
           )
-          .map(_ => nsName)
+          .map(_ => K8sNamespace(nsName))
       } yield namespace
     }
 
@@ -109,6 +117,7 @@ object Kubernetes {
 
   def namespaceName(pullRequest: PullRequest): String = {
     // TODO: This format will be bad for long repo names or those that start similarly
+    // TODO: Should start with `pr-` or something standard for RBAC permissions
     s"${pullRequest.head.repo.name}-pr-${pullRequest.number}".trim
       .take(63) // max length of namespace
   }
