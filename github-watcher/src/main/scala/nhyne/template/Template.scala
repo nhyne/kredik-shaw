@@ -148,7 +148,7 @@ object Template {
   //   Note if we add and env var we will not inject it into already templated namespaces (unless we rebuild) -- TODO: need to create rebuild command
   private def containerHasAhabEnvVars(container: Container) = {
     container.env
-      .map(_.contains(EnvVar("AHAB_ENVIRONMENT", "TRUE")))
+      .map(_.contains(EnvVar("PR_ENVIRONMENT", "TRUE")))
       .getOrElse(false)
   }
 

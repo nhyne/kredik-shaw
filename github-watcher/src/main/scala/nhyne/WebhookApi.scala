@@ -218,7 +218,7 @@ object WebhookApi {
                 _ <- templateService
                   .injectEnvVarsIntoDeployments(
                     namespace,
-                    Map("AHAB_ENVIRONMENT" -> "TRUE")
+                    Map("PR_ENVIRONMENT" -> "TRUE")
                   )
                   .tapError(e => log.error(e.toString))
                   .mapError(e => new Throwable(e.toString))
