@@ -6,6 +6,7 @@ val sttpClientVersion = "3.3.14"
 val tapirVersion = "0.17.19"
 val circeVersion = "0.13.0"
 val zioMetricsVersion = "1.0.12"
+val zioK8sVersion = "1.3.4"
 
 lazy val root = (project in file("."))
   .settings(
@@ -31,7 +32,8 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "dev.zio" %% "zio" % zioVersion,
         "dev.zio" %% "zio-interop-cats" % "3.1.1.0",
         "dev.zio" %% "zio-process" % "0.5.0",
-        "com.coralogix" %% "zio-k8s-client" % "1.3.3",
+        "com.coralogix" %% "zio-k8s-client" % zioK8sVersion,
+        "com.coralogix" %% "zio-k8s-client-quicklens" % zioK8sVersion,
         "io.github.kitlangton" %% "zio-magic" % "0.3.8",
         "dev.zio" %% "zio-logging-slf4j" % zioLoggingVersion,
         "dev.zio" %% "zio-logging" % zioLoggingVersion,

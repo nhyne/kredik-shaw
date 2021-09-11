@@ -48,7 +48,10 @@ object Template {
       Command("kustomize", "build", path.toString())
     )
 
-  private def template(dir: Path, config: RepoConfig) =
+  def template(
+      dir: Path,
+      config: RepoConfig
+  ): ZIO[Blocking, Throwable, String] =
     config.templateCommand match {
       case TemplateCommand.Helm => ???
       case TemplateCommand.Kustomize =>
@@ -60,7 +63,7 @@ object Template {
 
   type TemplateService = Has[Service]
 
-  val live: ZLayer[Any, Throwable, TemplateService] = {
+  val live: ULayer[TemplateService] = {
     ZLayer.succeed {
       new Service {
         override def templateManifests(
@@ -143,37 +146,23 @@ object Template {
     ): ZIO[Deployments, K8sFailure, Unit]
   }
 
-  // Checks to see if we have injected the "AHAB_ENVIRONMENT" environment variable
-  //   We're assuming that if this one exists that all the others do too
-  //   Note if we add and env var we will not inject it into already templated namespaces (unless we rebuild) -- TODO: need to create rebuild command
-  private def containerHasAhabEnvVars(container: Container) = {
-    container.env
-      .map(_.contains(EnvVar("PR_ENVIRONMENT", "TRUE")))
-      .getOrElse(false)
-  }
-
-  private def updateDeployEnvVars(
+  def updateDeployEnvVars(
       deploy: Deployment,
       envVars: Vector[EnvVar]
-  ): IO[K8sFailure, Deployment] = {
-
+  ): IO[K8sFailure, Deployment] =
     for {
       spec <- deploy.getSpec
       template <- spec.getTemplate
       templateSpec <- template.getSpec
       containers <- templateSpec.getContainers
       updatedContainers = containers.map { container =>
-        if (!containerHasAhabEnvVars(container)) {
-          val updatedEnv =
-            container.env.map(v => v ++ envVars).getOrElse(envVars)
-          container.copy(env = updatedEnv)
-        } else container
+        val updatedEnv =
+          container.env.map(v => (v ++ envVars).distinct).getOrElse(envVars)
+        container.copy(env = updatedEnv)
       }
       newTemplateSpec = templateSpec.copy(containers = updatedContainers)
       newTemplate = template.copy(spec = newTemplateSpec)
       newSpec = spec.copy(template = newTemplate)
       finalDeploy = deploy.copy(spec = newSpec)
     } yield finalDeploy
-  }
-
 }
