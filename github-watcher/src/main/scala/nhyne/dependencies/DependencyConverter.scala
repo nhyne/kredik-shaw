@@ -21,6 +21,7 @@ object DependencyConverter {
 
   type DependencyConverterService = Has[Service]
   trait Service {
+    // TODO: This should return a managed Path
     def dependencyToRepoConfig(
         dependency: Dependency,
         workingDir: Path

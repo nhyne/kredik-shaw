@@ -35,7 +35,6 @@ object DependencyWalker {
   //    maybe the Dependency -> RepoConfig function could be its own service?
   val live = ZLayer.succeed(
     new Service {
-      // hoping that a starting point doesn't also end up as its own dep?
       override def walkDependencies(
           startingConfig: RepoConfig,
           startingRepoPath: Path,
@@ -52,14 +51,9 @@ object DependencyWalker {
     }
   )
 
-  /* TODO: We want to walk the dependency graph and apply the watcher configs for each one
-   * This is probably the most important part
-   * In general we just want to walk through each dependency, turn it into a RepoConfig, then add it to a set of seen deps
-   *
+  /*
    * TODO: Make this parallel
    * TODO: Make this tail recursive
-   * TODO: Make this apply the configs too?
-   *    Could change configs: Set[RepoConfig] into Map[RepoConfig] => File??
    */
   private def walkDeps(
       workingDir: Path,

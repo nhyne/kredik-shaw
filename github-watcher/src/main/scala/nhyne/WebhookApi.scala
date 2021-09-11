@@ -171,63 +171,62 @@ object WebhookApi {
         Seq.empty
       )
       .use { path =>
-        for {
-          folderName <- random.nextUUID
-          repoDirectory = path./(folderName.toString)
-          _ <- Files.createDirectory(repoDirectory)
-          _ <- ZIO.service[GitCli.Service].flatMap { git =>
-            git.gitCloneAndMerge(
-              pullRequest,
-              repoDirectory
-            )
-          }
-          configSource <- ZIO.fromEither(
-            YamlConfigSource.fromYamlFile(
-              repoDirectory./(".watcher.yaml").toFile
-            )
-          )
-          initialRepoConfig <- ZIO.fromEither(
-            read(RepoConfig.repoConfigDescriptor.from(configSource))
-          )
-
-          depsWithPaths <- ZIO
-            .service[DependencyWalker.Service]
-            .flatMap(
-              _.walkDependencies(
-                initialRepoConfig,
-                repoDirectory,
-                pullRequest.head.sha,
-                path
+        Files.createTempDirectoryManaged(None, Seq.empty).use { repoDirectory =>
+          for {
+            _ <- ZIO.service[GitCli.Service].flatMap { git =>
+              git.gitCloneAndMerge(
+                pullRequest,
+                repoDirectory
+              )
+            }
+            configSource <- ZIO.fromEither(
+              YamlConfigSource.fromYamlFile(
+                repoDirectory./(".watcher.yaml").toFile
               )
             )
-          k8sService <- ZIO.service[Kubernetes.Service]
-          namespace <- k8sService
-            .createPRNamespace(pullRequest)
-            .mapError(e => new Throwable(e.toString))
-          templateService <- ZIO.service[template.Template.Service]
-          _ <- ZIO.foreach(depsWithPaths) {
-            case (repoConfig, (path, imageTag)) =>
-              for {
-                _ <- log.info(s"templating $repoConfig with tag: $imageTag")
-                templatedManifests <- templateService.templateManifests(
-                  repoConfig,
-                  path,
-                  namespace,
-                  imageTag
+            initialRepoConfig <- ZIO.fromEither(
+              read(RepoConfig.repoConfigDescriptor.from(configSource))
+            )
+
+            depsWithPaths <- ZIO
+              .service[DependencyWalker.Service]
+              .flatMap(
+                _.walkDependencies(
+                  initialRepoConfig,
+                  repoDirectory,
+                  pullRequest.head.sha,
+                  path
                 )
-                exitCode <- k8sService
-                  .applyFile(templatedManifests, namespace)
-                  .exitCode
-                _ <- templateService
-                  .injectEnvVarsIntoDeployments(
+              )
+            k8sService <- ZIO.service[Kubernetes.Service]
+            namespace <- k8sService
+              .createPRNamespace(pullRequest)
+              .mapError(e => new Throwable(e.toString))
+            templateService <- ZIO.service[template.Template.Service]
+            _ <- ZIO.foreach(depsWithPaths) {
+              case (repoConfig, (path, imageTag)) =>
+                for {
+                  _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+                  templatedManifests <- templateService.templateManifests(
+                    repoConfig,
+                    path,
                     namespace,
-                    Map("PR_ENVIRONMENT" -> "TRUE")
+                    imageTag
                   )
-                  .tapError(e => log.error(e.toString))
-                  .mapError(e => new Throwable(e.toString))
-              } yield repoConfig -> exitCode
-          }
-        } yield ()
+                  exitCode <- k8sService
+                    .applyFile(templatedManifests, namespace)
+                    .exitCode
+                  _ <- templateService
+                    .injectEnvVarsIntoDeployments(
+                      namespace,
+                      Map("PR_ENVIRONMENT" -> "TRUE")
+                    )
+                    .tapError(e => log.error(e.toString))
+                    .mapError(e => new Throwable(e.toString))
+                } yield repoConfig -> exitCode
+            }
+          } yield ()
+        }
       }
   }
 }
