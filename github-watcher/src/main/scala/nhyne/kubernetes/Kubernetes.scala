@@ -117,6 +117,7 @@ object Kubernetes {
 
   def namespaceName(pullRequest: PullRequest): String = {
     // TODO: This format will be bad for long repo names or those that start similarly
+    // TODO: Should start with `pr-` or something standard for RBAC permissions
     s"${pullRequest.head.repo.name}-pr-${pullRequest.number}".trim
       .take(63) // max length of namespace
   }

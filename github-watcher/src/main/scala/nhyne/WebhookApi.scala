@@ -113,9 +113,20 @@ object WebhookApi {
       case None => ZIO.fail(new Throwable("did not receive a request body"))
     }
 
+  // TODO: Should come up with a series of commands
+  /*
+   * rebuild: just redoes templating and applies
+   * restart: deletes namespace and then rebuilds
+   * destroy: destroys namespace
+   * status: gets status of object? -- could do a status: deployments which would get the status of all deploys in the namespace and comment them
+   *
+   */
   private def commentAction(comment: IssueCommentEvent) = {
     if (comment.getBody() == "rebuild") {
       for {
+        _ <- log.info(
+          s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
+        )
         pr <- ZIO
           .service[GithubApi.Service]
           .flatMap(_.getPullRequest(comment.repository, comment.issue.prNumber))
@@ -209,7 +220,8 @@ object WebhookApi {
                     namespace,
                     Map("AHAB_ENVIRONMENT" -> "TRUE")
                   )
-                  .mapError(_ => new Throwable("boooo"))
+                  .tapError(e => log.error(e.toString))
+                  .mapError(e => new Throwable(e.toString))
               } yield repoConfig -> exitCode
           }
         } yield ()

@@ -18,7 +18,7 @@ import com.coralogix.zio.k8s.client.apps.v1.deployments.{
 }
 import com.coralogix.zio.k8s.client.model.K8sNamespace
 import com.coralogix.zio.k8s.model.apps.v1.Deployment
-import com.coralogix.zio.k8s.model.core.v1.EnvVar
+import com.coralogix.zio.k8s.model.core.v1.{Container, EnvVar}
 
 object Template {
 
@@ -94,8 +94,12 @@ object Template {
             envVars: Map[String, String]
         ): ZIO[Deployments, K8sFailure, Unit] = {
           val deploys = getAll(Some(namespace))
+          val k8sEnvVars = envVars.map {
+            case (key, value) =>
+              EnvVar(key, value)
+          }
           deploys
-            .mapMParUnordered(20)(updateDeployEnvVars(_, envVars))
+            .mapMParUnordered(20)(updateDeployEnvVars(_, k8sEnvVars.toVector))
             .foreach { updatedDeploy =>
               updatedDeploy.getName.flatMap(name =>
                 replace(name, updatedDeploy, namespace)
@@ -139,14 +143,19 @@ object Template {
     ): ZIO[Deployments, K8sFailure, Unit]
   }
 
+  // Checks to see if we have injected the "AHAB_ENVIRONMENT" environment variable
+  //   We're assuming that if this one exists that all the others do too
+  //   Note if we add and env var we will not inject it into already templated namespaces (unless we rebuild) -- TODO: need to create rebuild command
+  private def containerHasAhabEnvVars(container: Container) = {
+    container.env
+      .map(_.contains(EnvVar("AHAB_ENVIRONMENT", "TRUE")))
+      .getOrElse(false)
+  }
+
   private def updateDeployEnvVars(
       deploy: Deployment,
-      envVars: Map[String, String]
+      envVars: Vector[EnvVar]
   ): IO[K8sFailure, Deployment] = {
-    val k8sEnvVars = envVars.map {
-      case (key, value) =>
-        EnvVar(key, value)
-    }
 
     for {
       spec <- deploy.getSpec
@@ -154,9 +163,11 @@ object Template {
       templateSpec <- template.getSpec
       containers <- templateSpec.getContainers
       updatedContainers = containers.map { container =>
-        val updatedEnv =
-          container.env.map(v => v ++ k8sEnvVars).getOrElse(k8sEnvVars.toVector)
-        container.copy(env = updatedEnv)
+        if (!containerHasAhabEnvVars(container)) {
+          val updatedEnv =
+            container.env.map(v => v ++ envVars).getOrElse(envVars)
+          container.copy(env = updatedEnv)
+        } else container
       }
       newTemplateSpec = templateSpec.copy(containers = updatedContainers)
       newTemplate = template.copy(spec = newTemplateSpec)
