@@ -17,12 +17,15 @@ lazy val root = (project in file("."))
   .aggregate(`github-watcher`)
 
 lazy val `github-watcher` = (project in file("./github-watcher"))
+  .enablePlugins(DockerPlugin, JavaAppPackaging)
   .settings(
     version := "0.0.1-SNAPSHOT",
     organization := "dev.nhyne",
     Compile / mainClass := Some("nhyne.Main"),
     reStart / mainClass := Some("nhyne.Main"),
     scalaVersion := scala_2_13,
+    dockerBaseImage := "openjdk-kustomize:16",
+    dockerExposedPorts ++= Seq(8090, 9090),
     scalacOptions ++= Seq(
       "-Xfatal-warnings",
       "-deprecation"
