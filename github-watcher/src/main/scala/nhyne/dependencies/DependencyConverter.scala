@@ -47,39 +47,41 @@ object DependencyConverter {
           repoDir = workingDir./(folderName.toString)
           _ <- Files.createDirectory(repoDir)
           repo = Repository.fromNameAndOwner(dependency.name, dependency.owner)
-          _ <- ZIO
-            .service[GitCli.Service]
-            .flatMap(git =>
-              git.gitCloneDepth(
-                repo,
-                Branch.fromString(
-                  dependency.branch,
-                  repo
-                ),
-                2,
-                repoDir
-              )
-            )
-          configSource <- ZIO
-            .fromEither(
-              YamlConfigSource
-                .fromYamlFile(
+          _ <-
+            ZIO
+              .service[GitCli.Service]
+              .flatMap(git =>
+                git.gitCloneDepth(
+                  repo,
+                  Branch.fromString(
+                    dependency.branch,
+                    repo
+                  ),
+                  2,
                   repoDir
-                    ./(
-                      watcherConfFile
-                    )
-                    .toFile
                 )
-                .orElse(
-                  YamlConfigSource
-                    .fromYamlFile(repoDir./(watcherConfFileShort).toFile)
-                )
-            )
-            .tapError(_ =>
-              log.error(
-                s"Could not read config file for dependency: $dependency"
               )
-            )
+          configSource <-
+            ZIO
+              .fromEither(
+                YamlConfigSource
+                  .fromYamlFile(
+                    repoDir
+                      ./(
+                        watcherConfFile
+                      )
+                      .toFile
+                  )
+                  .orElse(
+                    YamlConfigSource
+                      .fromYamlFile(repoDir./(watcherConfFileShort).toFile)
+                  )
+              )
+              .tapError(_ =>
+                log.error(
+                  s"Could not read config file for dependency: $dependency"
+                )
+              )
           config <- ZIO.fromEither(
             read(RepoConfig.repoConfigDescriptor.from(configSource))
           )

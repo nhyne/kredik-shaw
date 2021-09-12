@@ -41,26 +41,25 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
         )
         Files
           .createTempDirectoryManaged(None, Seq.empty)
-          .use {
-            path =>
-              assertM(
-                ZIO
-                  .service[DependencyWalker.Service]
-                  .flatMap(
-                    _.walkDependencies(repoConfig, path, "somesha", path)
-                  )
-              )(
-                equalTo(
-                  Map(
-                    repoConfig -> (path, ImageTag("somesha")),
-                    RepoConfig(
-                      new File("abc"),
-                      TemplateCommand.Helm,
-                      None
-                    ) -> (Path("abc"), ImageTag("latest"))
-                  )
+          .use { path =>
+            assertM(
+              ZIO
+                .service[DependencyWalker.Service]
+                .flatMap(
+                  _.walkDependencies(repoConfig, path, "somesha", path)
+                )
+            )(
+              equalTo(
+                Map(
+                  repoConfig -> (path, ImageTag("somesha")),
+                  RepoConfig(
+                    new File("abc"),
+                    TemplateCommand.Helm,
+                    None
+                  ) -> (Path("abc"), ImageTag("latest"))
                 )
               )
+            )
           }
       },
       testM("circular dependency terminates") {

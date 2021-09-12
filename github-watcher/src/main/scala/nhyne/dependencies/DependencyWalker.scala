@@ -76,9 +76,9 @@ object DependencyWalker {
         for {
           seen <- seenDepsRef.get
           shouldProcess = !seen.contains(dep)
-          maybeNewDependenciesToProcess <- if (shouldProcess)
-            ZIO.service[DependencyConverter.Service].flatMap {
-              depService =>
+          maybeNewDependenciesToProcess <-
+            if (shouldProcess)
+              ZIO.service[DependencyConverter.Service].flatMap { depService =>
                 depService.dependencyToRepoConfig(dep, workingDir).flatMap {
                   case (rc, path) =>
                     processedConfigsRef.get.flatMap { processedConfigs =>
@@ -90,12 +90,14 @@ object DependencyWalker {
                         .flatMap(_ => ZIO.succeed(rc.dependencies))
                     }
                 }
-            } else ZIO.none
+              }
+            else ZIO.none
           nextSeen = seen + dep
           _ <- seenDepsRef.set(nextSeen)
-          depsToProcess = maybeNewDependenciesToProcess
-            .getOrElse(Set.empty)
-            .diff(nextSeen)
+          depsToProcess =
+            maybeNewDependenciesToProcess
+              .getOrElse(Set.empty)
+              .diff(nextSeen)
           newUnseenDeps <- newUnseenDepsRef.get
           _ <- newUnseenDepsRef.set(newUnseenDeps ++ depsToProcess)
         } yield ()
@@ -103,7 +105,8 @@ object DependencyWalker {
       newUnseenDeps <- newUnseenDepsRef.get
       newSeenDeps <- seenDepsRef.get
       deps <- processedConfigsRef.get
-      ret <- if (newUnseenDeps.isEmpty) ZIO.succeed(deps)
-      else walkDeps(workingDir, newUnseenDeps, newSeenDeps, deps)
+      ret <-
+        if (newUnseenDeps.isEmpty) ZIO.succeed(deps)
+        else walkDeps(workingDir, newUnseenDeps, newSeenDeps, deps)
     } yield ret
 }

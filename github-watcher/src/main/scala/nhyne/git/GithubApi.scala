@@ -30,9 +30,10 @@ object GithubApi {
         ] =
           for {
             client <- ZIO.service[SBackend]
-            authScheme <- ZIO
-              .service[Authentication.Service]
-              .flatMap(_.getAuthentication())
+            authScheme <-
+              ZIO
+                .service[Authentication.Service]
+                .flatMap(_.getAuthentication())
             request = addAuthToRequest(
               basicRequest
                 .get(uri"https://api.github.com/repos/$org/$repo/topics")
@@ -55,9 +56,10 @@ object GithubApi {
         ] =
           for {
             client <- ZIO.service[SBackend]
-            authScheme <- ZIO
-              .service[Authentication.Service]
-              .flatMap(_.getAuthentication())
+            authScheme <-
+              ZIO
+                .service[Authentication.Service]
+                .flatMap(_.getAuthentication())
             request = addAuthToRequest(
               basicRequest
                 .post(
@@ -69,9 +71,10 @@ object GithubApi {
                 .body(CommentBody(message).toJson),
               authScheme
             )
-            response <- client
-              .send(request)
-              .flatMap(res => ZIO.fromEither(res.body))
+            response <-
+              client
+                .send(request)
+                .flatMap(res => ZIO.fromEither(res.body))
           } yield response
 
         override def getPullRequest(repository: Repository, number: Int): ZIO[
@@ -81,9 +84,10 @@ object GithubApi {
         ] =
           for {
             client <- ZIO.service[SBackend]
-            authScheme <- ZIO
-              .service[Authentication.Service]
-              .flatMap(_.getAuthentication())
+            authScheme <-
+              ZIO
+                .service[Authentication.Service]
+                .flatMap(_.getAuthentication())
             request = addAuthToRequest(
               basicRequest
                 .get(
@@ -93,9 +97,10 @@ object GithubApi {
                 .response(asJson[PullRequest]),
               authScheme
             )
-            response <- client
-              .send(request)
-              .flatMap(res => ZIO.fromEither(res.body))
+            response <-
+              client
+                .send(request)
+                .flatMap(res => ZIO.fromEither(res.body))
           } yield response
 
         override def validateAuth(
@@ -103,8 +108,9 @@ object GithubApi {
         ): ZIO[Has[SBackend], Throwable, Boolean] =
           for {
             client <- ZIO.service[SBackend]
-            noAuthRequest = basicRequest
-              .get(uri"https://api.github.com/user")
+            noAuthRequest =
+              basicRequest
+                .get(uri"https://api.github.com/user")
             authRequest = AuthenticationScheme.actionOnScheme(credentials)(
               noAuthRequest.auth.basic
             )(noAuthRequest.auth.bearer)
@@ -151,17 +157,23 @@ object GithubApi {
     def getTopics(
         org: String,
         repo: String
-    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, Topics]
+    ): ZIO[Has[
+      SBackend
+    ] with System with GitAuthenticationService, Throwable, Topics]
 
     def createComment(
         message: String,
         pullRequest: PullRequest
-    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, CommentResponse]
+    ): ZIO[Has[
+      SBackend
+    ] with System with GitAuthenticationService, Throwable, CommentResponse]
 
     def getPullRequest(
         repository: Repository,
         number: Int
-    ): ZIO[Has[SBackend] with System with GitAuthenticationService, Throwable, PullRequest]
+    ): ZIO[Has[
+      SBackend
+    ] with System with GitAuthenticationService, Throwable, PullRequest]
 
     def validateAuth(
         credentials: AuthenticationScheme

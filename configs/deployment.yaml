@@ -1,0 +1,72 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kredik-config
+  namespace: kredik-shaw
+data:
+  config: |
+    ---
+    port: 8090
+    prometheusPort: 9090
+    organizations:
+      - nhyne
+    imageSubstitutions:
+      - nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kredik-shaw
+  name: kredik-shaw
+  namespace: kredik-shaw
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: kredik-shaw
+  template:
+    metadata:
+      labels:
+        app: kredik-shaw
+    spec:
+      containers:
+      - name: kredik-shaw
+        resources:
+          limits:
+            memory: 1250M
+          requests:
+            memory: 1250M
+        env:
+        - name: GITHUB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: github-token
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: github-token
+        image: nhyne/github-watcher:0.0.1-SNAPSHOT
+        ports:
+        - containerPort: 8090
+          name: webserver
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        volumeMounts:
+          - name: config
+            mountPath: "/opt/docker/src/main/resources/"
+            readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: kredik-config
+            items:
+              - key: config
+                path: "watcher.yaml"
+      serviceAccountName: kredik-shaw

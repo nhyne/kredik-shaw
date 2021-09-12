@@ -12,7 +12,7 @@ import nhyne.git.{Authentication, GitCli, GithubApi}
 import nhyne.kubernetes.Kubernetes
 import nhyne.prometheus.Metrics
 import zio.logging._
-import zio.config.{ZConfig, getConfig}
+import zio.config._
 import nhyne.config.ApplicationConfig
 import nhyne.git.Authentication.GitAuthenticationError
 import zio.config.yaml.{YamlConfig, YamlConfigSource}
@@ -39,18 +39,27 @@ object Main extends App {
     _ <- server.start
   } yield ()
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
+  private def confMerger(confFile: Option[String]) =
+    for {
+      yamlFile <- ZIO.fromEither(
+        YamlConfigSource.fromYamlFile(
+          ZFPath(confFile.getOrElse("watcher.yaml")).toFile
+        )
+      )
+      env <- ConfigSource.fromSystemEnv
+      sysProp <- ConfigSource.fromSystemProps
+      source =
+        ApplicationConfig.appConfigDescriptor.from(yamlFile <> sysProp <> env)
+      config <- ZIO.fromEither(read(source))
+    } yield config
 
-    val config = YamlConfig.fromFile(
-      ZFPath("src/main/resources/watcher.yaml").toFile,
-      ApplicationConfig.appConfigDescriptor
-    )
+  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
     val logger = Logging.console(
       LogLevel.Info,
       LogFormat.ColoredLogFormat()
     ) >>> Logging.withRootLoggerName("watcher")
-
+    println(args)
     program
       .inject(
         ZEnv.live,
@@ -60,7 +69,7 @@ object Main extends App {
         ServerChannelFactory.auto,
         EventLoopGroup.auto(5),
         logger,
-        config,
+        confMerger(args.headOption).toLayer,
         Template.live,
         DependencyConverter.live,
         Registry.live,

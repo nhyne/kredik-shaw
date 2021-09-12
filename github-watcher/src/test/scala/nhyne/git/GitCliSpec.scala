@@ -37,18 +37,19 @@ object GitCliSpec {
         ZIO.fail(CommandError.NonZeroErrorCode(ExitCode(2)))
       else
         for {
-          _ <- Files
-            .createFile(
-              cloneInto./(".watcher.yaml"),
-              PosixFilePermissions.asFileAttribute(
-                PosixFilePermissions.fromString("rw-rw-rw-")
+          _ <-
+            Files
+              .createFile(
+                cloneInto./(".watcher.yaml"),
+                PosixFilePermissions.asFileAttribute(
+                  PosixFilePermissions.fromString("rw-rw-rw-")
+                )
               )
-            )
-            .mapError(e => CommandError.IOError(e))
-          _ <- FileChannel
-            .open(cloneInto./(".watcher.yaml"), StandardOpenOption.WRITE)
-            .use {
-              channel =>
+              .mapError(e => CommandError.IOError(e))
+          _ <-
+            FileChannel
+              .open(cloneInto./(".watcher.yaml"), StandardOpenOption.WRITE)
+              .use { channel =>
                 channel
                   .writeChunk(Chunk.fromArray("""
                 |---
@@ -59,12 +60,12 @@ object GitCliSpec {
                 |    name: watcher-test-dependency
                 |    branch: master
                 |""".stripMargin.getBytes))
-            }
-            .mapError(e =>
-              CommandError.IOError(
-                new IOException(s"could not write test config file: $e")
+              }
+              .mapError(e =>
+                CommandError.IOError(
+                  new IOException(s"could not write test config file: $e")
+                )
               )
-            )
           exitCode <- ZIO.succeed(ExitCode.success)
         } yield exitCode
     }
