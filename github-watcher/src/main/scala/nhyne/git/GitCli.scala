@@ -23,12 +23,12 @@ object GitCli {
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Env, CommandError, String]
+    ): ZIO[Env, CommandError, ExitCode]
 
     def gitCloneAndMerge(
         pullRequest: PullRequest,
         cloneDir: Path
-    ): ZIO[Env, Throwable, String]
+    ): ZIO[Env, Throwable, ExitCode]
   }
 
   val live = ZLayer.succeed(new Service {
@@ -37,7 +37,7 @@ object GitCli {
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Env, CommandError, String] =
+    ): ZIO[Env, CommandError, ExitCode] =
       Command(
         "git",
         "clone",
@@ -45,7 +45,7 @@ object GitCli {
         s"--branch=${branch.ref}",
         repository.sshUrl,
         cloneInto.toString()
-      ).string
+      ).successfulExitCode
 
     override def gitClone(
         repository: Repository,
@@ -66,7 +66,7 @@ object GitCli {
     ): ZIO[
       Env,
       Throwable,
-      String
+      ExitCode
     ] =
       for {
         _ <- gitClone(
@@ -76,7 +76,7 @@ object GitCli {
         )
         exitCode <- gitMerge(pullRequest.base)
           .workingDirectory(cloneInto.toFile)
-          .string
+          .successfulExitCode
       } yield exitCode
   })
 
