@@ -18,15 +18,16 @@ object AuthenticationSpec extends DefaultRunnableSpec {
       testM("valid bearer token") {
         val envData = Data(envs = Map("GITHUB_BEARER_TOKEN" -> testBearerToken))
         for {
-          authValue <- ZIO
-            .service[Authentication.Service]
-            .flatMap(auth => auth.getAuthentication())
-            .inject(
-              HttpClientZioBackend.layer(),
-              TestSystem.live(envData),
-              GithubApiSpec.test,
-              Authentication.live
-            )
+          authValue <-
+            ZIO
+              .service[Authentication.Service]
+              .flatMap(auth => auth.getAuthentication())
+              .inject(
+                HttpClientZioBackend.layer(),
+                TestSystem.live(envData),
+                GithubApiSpec.test,
+                Authentication.live
+              )
         } yield assert(authValue)(
           equalTo(AuthenticationScheme.Bearer(testBearerToken))
         )
@@ -36,15 +37,16 @@ object AuthenticationSpec extends DefaultRunnableSpec {
           Map("GITHUB_USERNAME" -> testUser, "GITHUB_TOKEN" -> testToken)
         )
         for {
-          authValue <- ZIO
-            .service[Authentication.Service]
-            .flatMap(auth => auth.getAuthentication())
-            .inject(
-              GithubApiSpec.test,
-              HttpClientZioBackend.layer(),
-              TestSystem.live(envData),
-              Authentication.live
-            )
+          authValue <-
+            ZIO
+              .service[Authentication.Service]
+              .flatMap(auth => auth.getAuthentication())
+              .inject(
+                GithubApiSpec.test,
+                HttpClientZioBackend.layer(),
+                TestSystem.live(envData),
+                Authentication.live
+              )
         } yield assert(authValue)(
           equalTo(AuthenticationScheme.Basic(testUser, testToken))
         )

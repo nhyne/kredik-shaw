@@ -32,32 +32,32 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
         val dependency = Dependency("abc", "abc", "abc", None)
         Files
           .createTempDirectoryManaged(None, Seq())
-          .use {
-            path =>
-              assertM(
-                for {
-                  stuff <- ZIO
+          .use { path =>
+            assertM(
+              for {
+                stuff <-
+                  ZIO
                     .service[DependencyConverter.Service]
                     .flatMap(_.dependencyToRepoConfig(dependency, path))
-                } yield stuff._1
-              )(
-                equalTo(
-                  RepoConfig(
-                    new File(".watcher"),
-                    TemplateCommand.Kustomize,
-                    Some(
-                      Set(
-                        Dependency(
-                          "nhyne",
-                          "watcher-test-dependency",
-                          "master",
-                          None
-                        )
+              } yield stuff._1
+            )(
+              equalTo(
+                RepoConfig(
+                  new File(".watcher"),
+                  TemplateCommand.Kustomize,
+                  Some(
+                    Set(
+                      Dependency(
+                        "nhyne",
+                        "watcher-test-dependency",
+                        "master",
+                        None
                       )
                     )
                   )
                 )
               )
+            )
 
           }
           .injectSome(

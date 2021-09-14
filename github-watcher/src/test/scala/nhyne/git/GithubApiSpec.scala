@@ -23,14 +23,15 @@ object GithubApiSpec {
 
       override def validateAuth(
           credentials: Authentication.AuthenticationScheme
-      ): ZIO[Has[SBackend], Throwable, Boolean] = credentials match {
-        case AuthenticationScheme.Bearer("valid")     => ZIO.succeed(true)
-        case AuthenticationScheme.Basic("valid", _)   => ZIO.succeed(true)
-        case AuthenticationScheme.Bearer("invalid")   => ZIO.succeed(false)
-        case AuthenticationScheme.Basic("invalid", _) => ZIO.succeed(false)
-        case _ =>
-          ZIO.fail(new Throwable("invalid option for mock validateAuth"))
-      }
+      ): ZIO[Has[SBackend], Throwable, Boolean] =
+        credentials match {
+          case AuthenticationScheme.Bearer("valid")     => ZIO.succeed(true)
+          case AuthenticationScheme.Basic("valid", _)   => ZIO.succeed(true)
+          case AuthenticationScheme.Bearer("invalid")   => ZIO.succeed(false)
+          case AuthenticationScheme.Basic("invalid", _) => ZIO.succeed(false)
+          case _ =>
+            ZIO.fail(new Throwable("invalid option for mock validateAuth"))
+        }
 
       override def getPullRequest(
           repository: GitEvents.Repository,

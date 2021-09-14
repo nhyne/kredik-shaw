@@ -1,40 +1,34 @@
 package nhyne.git
 
-import zio.{ExitCode, Has, ZIO, ZLayer, random}
+import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking
-import zio.clock.{Clock, sleep}
-import zio.console.Console
-import zio.duration.Duration.fromMillis
-import zio.json._
-import zio.logging.{Logging, log}
 import nhyne.git.GitEvents._
 import zio.nio.core.file.Path
-import zio.nio.file.Files
 import zio.process.{Command, CommandError}
-import zio.random.Random
 
 object GitCli {
 
   type GitCliService = Has[Service]
+  private type Env = Blocking
 
   trait Service {
     def gitClone(
         repository: Repository,
         branch: Branch,
         cloneInto: Path
-    ): ZIO[Blocking, CommandError, ExitCode]
+    ): ZIO[Env, CommandError, ExitCode]
 
     def gitCloneDepth(
         repository: Repository,
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Blocking, CommandError, ExitCode]
+    ): ZIO[Env, CommandError, ExitCode]
 
     def gitCloneAndMerge(
         pullRequest: PullRequest,
         cloneDir: Path
-    ): ZIO[Blocking, Throwable, ExitCode]
+    ): ZIO[Env, Throwable, ExitCode]
   }
 
   val live = ZLayer.succeed(new Service {
@@ -43,13 +37,13 @@ object GitCli {
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Blocking, CommandError, ExitCode] =
+    ): ZIO[Env, CommandError, ExitCode] =
       Command(
         "git",
         "clone",
         s"--depth=$depth",
         s"--branch=${branch.ref}",
-        repository.htmlUrl,
+        repository.sshUrl,
         cloneInto.toString()
       ).successfulExitCode
 
@@ -57,20 +51,20 @@ object GitCli {
         repository: Repository,
         branch: Branch,
         cloneInto: Path
-    ): ZIO[Blocking, CommandError, ExitCode] =
+    ): ZIO[Env, CommandError, ExitCode] =
       Command(
         "git",
         "clone",
         s"--branch=${branch.ref}",
-        repository.htmlUrl,
+        repository.sshUrl,
         cloneInto.toString()
-      ).exitCode
+      ).successfulExitCode
 
     override def gitCloneAndMerge(
         pullRequest: PullRequest,
         cloneInto: Path
     ): ZIO[
-      Blocking,
+      Env,
       Throwable,
       ExitCode
     ] =

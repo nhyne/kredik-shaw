@@ -23,20 +23,22 @@ object Authentication {
   ]] =
     ZLayer.fromEffect(for {
       authentication <- readAuthVars()
-      isValid <- ZIO
-        .service[GithubApi.Service]
-        .flatMap(
-          _.validateAuth(authentication).mapError(authFailure =>
-            GitAuthenticationError(s"Could not validate auth: $authFailure")
+      isValid <-
+        ZIO
+          .service[GithubApi.Service]
+          .flatMap(
+            _.validateAuth(authentication).mapError(authFailure =>
+              GitAuthenticationError(s"Could not validate auth: $authFailure")
+            )
           )
-        )
-      _ <- ZIO
-        .fail(
-          GitAuthenticationError(
-            "Provided credentials could not make valid request to Github API"
+      _ <-
+        ZIO
+          .fail(
+            GitAuthenticationError(
+              "Provided credentials could not make valid request to Github API"
+            )
           )
-        )
-        .when(!isValid)
+          .when(!isValid)
     } yield new Service {
       private val auth: AuthenticationScheme = authentication
       override def getAuthentication(): UIO[AuthenticationScheme] =
@@ -65,25 +67,26 @@ object Authentication {
       gitBearer <- env(GITHUB_BEARER_TOKEN).mapError(e =>
         GitAuthenticationError(s"Could not read $GITHUB_BEARER_TOKEN: $e")
       )
-      authentication <- ZIO
-        .fromOption(gitBearer.map(AuthenticationScheme.Bearer))
-        .catchAll {
-          case None =>
-            for {
-              gitUsername <- env(GITHUB_USERNAME).flatMap(ZIO.fromOption(_))
-              gitToken <- env(GITHUB_TOKEN).flatMap(ZIO.fromOption(_))
-            } yield AuthenticationScheme.Basic(gitUsername, gitToken)
-          case Some(_) =>
-            ZIO.fail(
-              GitAuthenticationError(
-                "Could not find credentials, tried Bearer and Basic"
+      authentication <-
+        ZIO
+          .fromOption(gitBearer.map(AuthenticationScheme.Bearer))
+          .catchAll {
+            case None =>
+              for {
+                gitUsername <- env(GITHUB_USERNAME).flatMap(ZIO.fromOption(_))
+                gitToken <- env(GITHUB_TOKEN).flatMap(ZIO.fromOption(_))
+              } yield AuthenticationScheme.Basic(gitUsername, gitToken)
+            case Some(_) =>
+              ZIO.fail(
+                GitAuthenticationError(
+                  "Could not find credentials, tried Bearer and Basic"
+                )
               )
+          }
+          .mapError(_ =>
+            GitAuthenticationError(
+              "Could not find credentials, tried Bearer and Basic"
             )
-        }
-        .mapError(_ =>
-          GitAuthenticationError(
-            "Could not find credentials, tried Bearer and Basic"
           )
-        )
     } yield authentication
 }

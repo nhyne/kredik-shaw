@@ -46,6 +46,7 @@ object WebhookApi {
 
   private val apiRoot = Root / "api" / "webhook"
 
+  // TODO: health and ready endpoints
   private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM {
       case req @ Method.POST -> `apiRoot` =>
@@ -75,7 +76,9 @@ object WebhookApi {
           body
             .fromJson[PullRequestEvent]
             .orElse(body.fromJson[IssueCommentEvent])
-            .orElse(body.fromJson[LabeledEvent]) // see comment around Webhook event trait
+            .orElse(
+              body.fromJson[LabeledEvent]
+            ) // see comment around Webhook event trait
         for {
           webhookEvent <- ZIO.fromEither(thing).mapError(new Throwable(_))
           _ <- webhookEvent match {
@@ -83,24 +86,25 @@ object WebhookApi {
               pullRequestAction(pullRequestEvent)
                 .tapError(thrown =>
                   for {
-                    _ <- log.info(
+                    _ <- log.error(
                       s"failed to process PR event: ${pullRequestEvent.pullRequest
-                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+                        .getBaseFullName()}#${pullRequestEvent.pullRequest.number}: ${thrown.getMessage}"
                     )
-                    _ <- ZIO
-                      .service[GithubApi.Service]
-                      .flatMap(
-                        _.createComment(
-                          thrown.toString,
-                          pullRequestEvent.pullRequest
+                    _ <-
+                      ZIO
+                        .service[GithubApi.Service]
+                        .flatMap(
+                          _.createComment(
+                            thrown.toString,
+                            pullRequestEvent.pullRequest
+                          )
                         )
-                      )
-                      .tapError(e =>
-                        log.error(
-                          s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
-                            .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
+                        .tapError(e =>
+                          log.error(
+                            s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
+                              .getBaseFullName()}#${pullRequestEvent.pullRequest.number} due to: \n ${e.getMessage}"
+                          )
                         )
-                      )
                   } yield ()
                 )
                 .forkDaemon // Forking once we have a valid body
@@ -127,10 +131,13 @@ object WebhookApi {
         _ <- log.info(
           s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
         )
-        pr <- ZIO
-          .service[GithubApi.Service]
-          .flatMap(_.getPullRequest(comment.repository, comment.issue.prNumber))
-          .tapError(err => log.error(err.toString))
+        pr <-
+          ZIO
+            .service[GithubApi.Service]
+            .flatMap(
+              _.getPullRequest(comment.repository, comment.issue.prNumber)
+            )
+            .tapError(err => log.error(err.toString))
         _ <- openedPullRequest(pr)
       } yield ()
     } else {
@@ -173,12 +180,16 @@ object WebhookApi {
       .use { path =>
         Files.createTempDirectoryManaged(None, Seq.empty).use { repoDirectory =>
           for {
-            _ <- ZIO.service[GitCli.Service].flatMap { git =>
-              git.gitCloneAndMerge(
-                pullRequest,
-                repoDirectory
-              )
-            }
+            _ <-
+              ZIO
+                .service[GitCli.Service]
+                .flatMap { git =>
+                  git.gitCloneAndMerge(
+                    pullRequest,
+                    repoDirectory
+                  )
+                }
+                .tapError(e => log.error(e.getCause.toString))
             configSource <- ZIO.fromEither(
               YamlConfigSource.fromYamlFile(
                 repoDirectory./(".watcher.yaml").toFile
@@ -188,20 +199,22 @@ object WebhookApi {
               read(RepoConfig.repoConfigDescriptor.from(configSource))
             )
 
-            depsWithPaths <- ZIO
-              .service[DependencyWalker.Service]
-              .flatMap(
-                _.walkDependencies(
-                  initialRepoConfig,
-                  repoDirectory,
-                  pullRequest.head.sha,
-                  path
+            depsWithPaths <-
+              ZIO
+                .service[DependencyWalker.Service]
+                .flatMap(
+                  _.walkDependencies(
+                    initialRepoConfig,
+                    repoDirectory,
+                    pullRequest.head.sha,
+                    path
+                  )
                 )
-              )
             k8sService <- ZIO.service[Kubernetes.Service]
-            namespace <- k8sService
-              .createPRNamespace(pullRequest)
-              .mapError(e => new Throwable(e.toString))
+            namespace <-
+              k8sService
+                .createPRNamespace(pullRequest)
+                .mapError(e => new Throwable(e.toString))
             templateService <- ZIO.service[template.Template.Service]
             _ <- ZIO.foreach(depsWithPaths) {
               case (repoConfig, (path, imageTag)) =>
@@ -213,16 +226,18 @@ object WebhookApi {
                     namespace,
                     imageTag
                   )
-                  exitCode <- k8sService
-                    .applyFile(templatedManifests, namespace)
-                    .exitCode
-                  _ <- templateService
-                    .injectEnvVarsIntoDeployments(
-                      namespace,
-                      Map("PR_ENVIRONMENT" -> "TRUE")
-                    )
-                    .tapError(e => log.error(e.toString))
-                    .mapError(e => new Throwable(e.toString))
+                  exitCode <-
+                    k8sService
+                      .applyFile(templatedManifests, namespace)
+                      .exitCode
+                  _ <-
+                    templateService
+                      .injectEnvVarsIntoDeployments(
+                        namespace,
+                        Map("PR_ENVIRONMENT" -> "TRUE")
+                      )
+                      .tapError(e => log.error(e.toString))
+                      .mapError(e => new Throwable(e.toString))
                 } yield repoConfig -> exitCode
             }
           } yield ()
