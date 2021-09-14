@@ -70,7 +70,7 @@ object GitEvents {
         s"$name/$owner",
         Owner(owner),
         htmlUrl = s"https://github.com/$owner/$name",
-        sshUrl = s"nhyne.git@github.com:$owner/$name.nhyne.git",
+        sshUrl = s"git@github.com:$owner/$name.git",
         cloneUrl = s"https://github.com/$owner/$name.git"
       )
   }

@@ -25,6 +25,7 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
     reStart / mainClass := Some("nhyne.Main"),
     scalaVersion := scala_2_13,
     dockerBaseImage := "openjdk-kustomize:16",
+    Docker / daemonUser := "rashek",
     dockerExposedPorts ++= Seq(8090, 9090),
     scalacOptions ++= Seq(
       "-Xfatal-warnings",

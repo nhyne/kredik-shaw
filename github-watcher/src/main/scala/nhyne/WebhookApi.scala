@@ -86,9 +86,9 @@ object WebhookApi {
               pullRequestAction(pullRequestEvent)
                 .tapError(thrown =>
                   for {
-                    _ <- log.info(
+                    _ <- log.error(
                       s"failed to process PR event: ${pullRequestEvent.pullRequest
-                        .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number}"
+                        .getBaseFullName()}#${pullRequestEvent.pullRequest.number}: ${thrown.getMessage}"
                     )
                     _ <-
                       ZIO
@@ -102,7 +102,7 @@ object WebhookApi {
                         .tapError(e =>
                           log.error(
                             s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
-                              .getBaseFullName()} number: ${pullRequestEvent.pullRequest.number} due to: \n $e"
+                              .getBaseFullName()}#${pullRequestEvent.pullRequest.number} due to: \n ${e.getMessage}"
                           )
                         )
                   } yield ()
@@ -180,12 +180,16 @@ object WebhookApi {
       .use { path =>
         Files.createTempDirectoryManaged(None, Seq.empty).use { repoDirectory =>
           for {
-            _ <- ZIO.service[GitCli.Service].flatMap { git =>
-              git.gitCloneAndMerge(
-                pullRequest,
-                repoDirectory
-              )
-            }
+            _ <-
+              ZIO
+                .service[GitCli.Service]
+                .flatMap { git =>
+                  git.gitCloneAndMerge(
+                    pullRequest,
+                    repoDirectory
+                  )
+                }
+                .tapError(e => log.error(e.getCause.toString))
             configSource <- ZIO.fromEither(
               YamlConfigSource.fromYamlFile(
                 repoDirectory./(".watcher.yaml").toFile

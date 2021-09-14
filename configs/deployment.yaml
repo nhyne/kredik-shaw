@@ -39,6 +39,8 @@ spec:
             memory: 1250M
           requests:
             memory: 1250M
+        args:
+          - "resources/watcher.yaml"
         env:
         - name: GITHUB_USERNAME
           valueFrom:
@@ -50,7 +52,7 @@ spec:
             secretKeyRef:
               key: token
               name: github-token
-        image: nhyne/github-watcher:0.0.1-SNAPSHOT
+        image: nhyne/github-watcher:0.0.15-SNAPSHOT
         ports:
         - containerPort: 8090
           name: webserver
@@ -60,7 +62,10 @@ spec:
           protocol: TCP
         volumeMounts:
           - name: config
-            mountPath: "/opt/docker/src/main/resources/"
+            mountPath: "/opt/docker/resources/"
+            readOnly: true
+          - name: ssh-key
+            mountPath: "/home/rashek/.ssh/"
             readOnly: true
       volumes:
         - name: config
@@ -69,4 +74,31 @@ spec:
             items:
               - key: config
                 path: "watcher.yaml"
+        - name: ssh-key
+          secret:
+            secretName: github-token
+            items:
+              - key: ssh_key
+                path: "id_rsa"
+              - key: github_host
+                path: "known_hosts"
       serviceAccountName: kredik-shaw
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kredik-shaw
+  name: kredik-shaw
+  namespace: kredik-shaw
+spec:
+  ports:
+    - port: 8090
+      targetPort: 8090
+      name: webserver
+    - port: 9090
+      targetPort: 9090
+      name: metrics
+  selector:
+    app: kredik-shaw
+  type: ClusterIP

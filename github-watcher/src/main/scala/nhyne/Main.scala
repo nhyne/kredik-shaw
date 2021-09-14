@@ -41,6 +41,7 @@ object Main extends App {
 
   private def confMerger(confFile: Option[String]) =
     for {
+      // TODO: The from file should be okay to fail since we're pulling config from other places
       yamlFile <- ZIO.fromEither(
         YamlConfigSource.fromYamlFile(
           ZFPath(confFile.getOrElse("watcher.yaml")).toFile
@@ -59,7 +60,7 @@ object Main extends App {
       LogLevel.Info,
       LogFormat.ColoredLogFormat()
     ) >>> Logging.withRootLoggerName("watcher")
-    println(args)
+
     program
       .inject(
         ZEnv.live,

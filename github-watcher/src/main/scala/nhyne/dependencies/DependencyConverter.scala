@@ -2,12 +2,10 @@ package nhyne.dependencies
 
 import nhyne.git.GitCli
 import nhyne.template.{Dependency, RepoConfig}
-import zio.blocking.Blocking
 import zio.config.read
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio._
-import zio.random.Random
 import zio.config.yaml.YamlConfigSource
 import nhyne.git.GitEvents.{Branch, Repository}
 import nhyne.git.GitCli.GitCliService

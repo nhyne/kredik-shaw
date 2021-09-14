@@ -105,6 +105,7 @@ object Template {
             .mapMParUnordered(20)(updateDeployEnvVars(_, k8sEnvVars.toVector))
             .foreach { updatedDeploy =>
               updatedDeploy.getName.flatMap(name =>
+                // TODO: This is throwing an error
                 replace(name, updatedDeploy, namespace)
               )
             }
