@@ -230,16 +230,16 @@ object WebhookApi {
                     k8sService
                       .applyFile(templatedManifests, namespace)
                       .exitCode
-                  _ <-
-                    templateService
-                      .injectEnvVarsIntoDeployments(
-                        namespace,
-                        Map("PR_ENVIRONMENT" -> "TRUE")
-                      )
-                      .tapError(e => log.error(e.toString))
-                      .mapError(e => new Throwable(e.toString))
                 } yield repoConfig -> exitCode
             }
+            _ <-
+              templateService
+                .injectEnvVarsIntoDeployments(
+                  namespace,
+                  Map("PR_ENVIRONMENT" -> "TRUE")
+                )
+                .tapError(e => log.error(e.toString))
+                .mapError(e => new Throwable(e.toString))
           } yield ()
         }
       }

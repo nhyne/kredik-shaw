@@ -102,7 +102,7 @@ object Template {
               EnvVar(key, value)
           }
           deploys
-            .mapMParUnordered(20)(updateDeployEnvVars(_, k8sEnvVars.toVector))
+            .mapM(updateDeployEnvVars(_, k8sEnvVars.toVector))
             .foreach { updatedDeploy =>
               updatedDeploy.getName.flatMap(name =>
                 // TODO: This is throwing an error
