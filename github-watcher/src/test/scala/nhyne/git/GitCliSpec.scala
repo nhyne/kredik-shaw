@@ -1,5 +1,6 @@
 package nhyne.git
 
+import nhyne.WebhookApi.KredikError.CliError
 import nhyne.git.GitCli.Service
 import nhyne.git.GitEvents.PullRequest
 import zio._
@@ -21,9 +22,14 @@ object GitCliSpec {
         repository: GitEvents.Repository,
         branch: GitEvents.Branch,
         cloneInto: Path
-    ): ZIO[Blocking, CommandError, ExitCode] = {
+    ): ZIO[Blocking, CliError, ExitCode] = {
       if (repository.name == "failure")
-        ZIO.fail(CommandError.NonZeroErrorCode(ExitCode(2)))
+        ZIO.fail(
+          CliError(
+            CommandError.NonZeroErrorCode(ExitCode(2)),
+            "mock gitClone intended failure"
+          )
+        )
       else ZIO.succeed(ExitCode.success)
     }
 
@@ -32,9 +38,14 @@ object GitCliSpec {
         branch: GitEvents.Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Blocking, CommandError, ExitCode] = {
+    ): ZIO[Blocking, CliError, ExitCode] = {
       if (repository.name == "failure")
-        ZIO.fail(CommandError.NonZeroErrorCode(ExitCode(2)))
+        ZIO.fail(
+          CliError(
+            CommandError.NonZeroErrorCode(ExitCode(2)),
+            "mock gitCloneDepth intended failure"
+          )
+        )
       else
         for {
           _ <-
@@ -45,7 +56,7 @@ object GitCliSpec {
                   PosixFilePermissions.fromString("rw-rw-rw-")
                 )
               )
-              .mapError(e => CommandError.IOError(e))
+              .mapError(e => CliError(CommandError.IOError(e), ""))
           _ <-
             FileChannel
               .open(cloneInto./(".watcher.yaml"), StandardOpenOption.WRITE)
@@ -66,6 +77,7 @@ object GitCliSpec {
                   new IOException(s"could not write test config file: $e")
                 )
               )
+              .mapError(e => CliError(e, ""))
           exitCode <- ZIO.succeed(ExitCode.success)
         } yield exitCode
     }
@@ -73,9 +85,14 @@ object GitCliSpec {
     override def gitCloneAndMerge(
         pullRequest: PullRequest,
         cloneDir: Path
-    ): ZIO[Blocking, Throwable, ExitCode] = {
+    ): ZIO[Blocking, CliError, ExitCode] = {
       if (pullRequest.number == 1)
-        ZIO.fail(CommandError.NonZeroErrorCode(ExitCode(2)))
+        ZIO.fail(
+          CliError(
+            CommandError.NonZeroErrorCode(ExitCode(2)),
+            "mock gitCloneAndMerge intended failure"
+          )
+        )
       else ZIO.succeed(ExitCode.success)
     }
   })

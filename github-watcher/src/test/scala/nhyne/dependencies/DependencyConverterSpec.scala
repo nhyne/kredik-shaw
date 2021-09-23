@@ -1,5 +1,6 @@
 package nhyne.dependencies
 
+import nhyne.WebhookApi.KredikError
 import nhyne.git.GitCliSpec
 import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
@@ -96,10 +97,14 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
         override def dependencyToRepoConfig(
             dependency: Dependency,
             workingDir: Path
-        ): ZIO[Blocking with Random, Throwable, (RepoConfig, Path)] =
+        ): ZIO[Blocking with Random, KredikError, (RepoConfig, Path)] =
           ZIO
             .fromOption(testMap.get(dependency.owner))
-            .mapError(_ => new Throwable("could not get item from test map"))
+            .mapError(_ =>
+              KredikError.GeneralError(
+                new Throwable("could not get item from test map")
+              )
+            )
       })
 
   }

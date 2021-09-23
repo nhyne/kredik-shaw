@@ -1,5 +1,6 @@
 package nhyne.template
 
+import nhyne.WebhookApi.commandToKredikString
 import com.coralogix.zio.k8s.client.K8sFailure
 import nhyne.template.RepoConfig.ImageTag
 import zio.process._
@@ -19,6 +20,7 @@ import com.coralogix.zio.k8s.client.apps.v1.deployments.{
 import com.coralogix.zio.k8s.client.model.K8sNamespace
 import com.coralogix.zio.k8s.model.apps.v1.Deployment
 import com.coralogix.zio.k8s.model.core.v1.{Container, EnvVar}
+import nhyne.WebhookApi.KredikError
 
 object Template {
 
@@ -31,39 +33,31 @@ object Template {
     // case object None extends TemplateCommand -- this would essentially just read all the files into a string? -- would have to do a `sed`
   }
 
-  sealed trait TemplateError
-  object TemplateError {
-    final case class TemplateCommandError(commandError: CommandError, stdErr: String) extends TemplateError
-    final case class TemplateGeneralError(cause: Throwable) extends TemplateError
-  }
-
   private def kustomizeCommand(path: Path) =
-      Command("kustomize", "build", path.toString())
+    Command("kustomize", "build", path.toString())
 
   private def kustomizeHelmCommand(path: Path) =
-      Command("kustomize", "build", "--enable-helm", path.toString())
+    Command("kustomize", "build", "--enable-helm", path.toString())
 
   private def helmCommand(dir: Path) = ???
 
   def template(
       dir: Path,
       config: RepoConfig
-  ): ZIO[Blocking, TemplateError, String] = {
+  ): ZIO[Blocking, KredikError, String] = {
     for {
-      path <- dir./(config.resourceFolder.getName).toAbsolutePath.mapError( e => TemplateError.TemplateGeneralError(e.getCause))
+      path <-
+        dir
+          ./(config.resourceFolder.getName)
+          .toAbsolutePath
+          .mapError(e => KredikError.GeneralError(e.getCause))
       templateCommand = config.templateCommand match {
         case TemplateCommand.Helm => helmCommand(path)
         case TemplateCommand.Kustomize =>
           kustomizeCommand(path)
         case TemplateCommand.KustomizeHelm => kustomizeHelmCommand(path)
       }
-      process <- templateCommand.run.mapError(e =>
-        TemplateError.TemplateCommandError(e, "")
-      )
-      stdErr <- process.stderr.string.mapError(e => TemplateError.TemplateCommandError(e, ""))
-      stdOut <- process.stdout.string.mapError( e =>
-        TemplateError.TemplateCommandError(e, stdErr)
-      )
+      stdOut <- commandToKredikString(templateCommand)
     } yield stdOut
   }
 
@@ -77,25 +71,31 @@ object Template {
             repoFolder: Path,
             namespace: K8sNamespace,
             imageTag: ImageTag
-        ): ZIO[Blocking, TemplateError, Path] = {
+        ): ZIO[Blocking, KredikError, Path] = {
           for {
             templateOutput <- template(repoFolder, repoConfig)
               .map(
                 substituteNamespace(_, namespace.value)
               )
               .map(substituteImage(_, imageTag))
-            tempFilePath <- Files.createTempFile(
-              prefix = Some("templatedOutput"),
-              fileAttributes = Seq(
-                PosixFilePermissions.asFileAttribute(
-                  PosixFilePermissions.fromString("rw-rw-rw-")
+            tempFilePath <-
+              Files
+                .createTempFile(
+                  prefix = Some("templatedOutput"),
+                  fileAttributes = Seq(
+                    PosixFilePermissions.asFileAttribute(
+                      PosixFilePermissions.fromString("rw-rw-rw-")
+                    )
+                  )
                 )
-              )
-            ).mapError(e => TemplateError.TemplateGeneralError(e.getCause))
-            _ <- FileChannel.open(tempFilePath, StandardOpenOption.WRITE).use {
-              channel =>
-                channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
-            }.mapError(e => TemplateError.TemplateGeneralError(e))
+                .mapError(e => KredikError.GeneralError(e.getCause))
+            _ <-
+              FileChannel
+                .open(tempFilePath, StandardOpenOption.WRITE)
+                .use { channel =>
+                  channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
+                }
+                .mapError(e => KredikError.GeneralError(e))
           } yield tempFilePath
         }
         override def injectEnvVarsIntoDeployments(
@@ -145,7 +145,7 @@ object Template {
         repoFolder: Path,
         namespace: K8sNamespace,
         imageTag: ImageTag
-    ): ZIO[Blocking, TemplateError, Path]
+    ): ZIO[Blocking, KredikError, Path]
 
     def injectEnvVarsIntoDeployments(
         namespace: K8sNamespace,

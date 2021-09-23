@@ -22,6 +22,7 @@ import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking
 import zio.logging.{Logging, log}
 import zio.process.{Command, CommandError}
+import nhyne.WebhookApi.{KredikError, commandToKredikExitCode}
 
 object Kubernetes {
 
@@ -30,7 +31,7 @@ object Kubernetes {
     def applyFile(
         directory: Path,
         namespace: K8sNamespace
-    ): ZIO[Blocking, CommandError, ExitCode]
+    ): ZIO[Blocking, KredikError, ExitCode]
     def createPRNamespace(
         pullRequest: PullRequest
     ): ZIO[
@@ -47,15 +48,18 @@ object Kubernetes {
     override def applyFile(
         directory: Path,
         namespace: K8sNamespace
-    ): ZIO[Blocking, CommandError, ExitCode] =
-      Command(
-        "kubectl",
-        "apply",
-        "-n",
-        namespace.value,
-        "-f",
-        directory.toString()
-      ).exitCode
+        // TODO: This TemplateError should be moved to a more common location
+    ): ZIO[Blocking, KredikError, ExitCode] =
+      commandToKredikExitCode(
+        Command(
+          "kubectl",
+          "apply",
+          "-n",
+          namespace.value,
+          "-f",
+          directory.toString()
+        )
+      )
 
     override def createPRNamespace(
         pullRequest: PullRequest

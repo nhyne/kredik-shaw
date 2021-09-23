@@ -10,6 +10,7 @@ import zio.config.yaml.YamlConfigSource
 import nhyne.git.GitEvents.{Branch, Repository}
 import nhyne.git.GitCli.GitCliService
 import zio.logging.{Logging, log}
+import nhyne.WebhookApi.KredikError
 
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
@@ -25,10 +26,39 @@ object DependencyConverter {
         workingDir: Path
     ): ZIO[
       Env,
-      Throwable,
+      KredikError,
       (RepoConfig, Path)
     ]
   }
+
+  private def readConfig(repoDir: Path, dependency: Dependency) =
+    for {
+
+      configSource <-
+        ZIO
+          .fromEither(
+            YamlConfigSource
+              .fromYamlFile(
+                repoDir
+                  ./(
+                    watcherConfFile
+                  )
+                  .toFile
+              )
+              .orElse(
+                YamlConfigSource
+                  .fromYamlFile(repoDir./(watcherConfFileShort).toFile)
+              )
+          )
+          .tapError(_ =>
+            log.error(
+              s"Could not read config file for dependency: $dependency"
+            )
+          )
+      config <- ZIO.fromEither(
+        read(RepoConfig.repoConfigDescriptor.from(configSource))
+      )
+    } yield config
 
   val live = ZLayer.succeed(
     new Service {
@@ -37,13 +67,13 @@ object DependencyConverter {
           workingDir: Path
       ): ZIO[
         Env,
-        Throwable,
+        KredikError,
         (RepoConfig, Path)
       ] = {
         for {
           folderName <- random.nextUUID
           repoDir = workingDir./(folderName.toString)
-          _ <- Files.createDirectory(repoDir)
+          _ <- Files.createDirectory(repoDir).mapError(KredikError.IOError)
           repo = Repository.fromNameAndOwner(dependency.name, dependency.owner)
           _ <-
             ZIO
@@ -59,30 +89,8 @@ object DependencyConverter {
                   repoDir
                 )
               )
-          configSource <-
-            ZIO
-              .fromEither(
-                YamlConfigSource
-                  .fromYamlFile(
-                    repoDir
-                      ./(
-                        watcherConfFile
-                      )
-                      .toFile
-                  )
-                  .orElse(
-                    YamlConfigSource
-                      .fromYamlFile(repoDir./(watcherConfFileShort).toFile)
-                  )
-              )
-              .tapError(_ =>
-                log.error(
-                  s"Could not read config file for dependency: $dependency"
-                )
-              )
-          config <- ZIO.fromEither(
-            read(RepoConfig.repoConfigDescriptor.from(configSource))
-          )
+          config <-
+            readConfig(repoDir, dependency).mapError(KredikError.IOReadError)
         } yield (config, repoDir)
       }
     }

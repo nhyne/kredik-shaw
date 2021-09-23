@@ -1,4 +1,5 @@
 package nhyne
+import com.coralogix.zio.k8s.client.K8sFailure
 import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
 import zhttp.service._
 import zhttp.http._
@@ -24,8 +25,13 @@ import nhyne.git.{GitCli, GithubApi}
 import nhyne.git.GithubApi.{GithubApiService, SBackend}
 import nhyne.kubernetes.Kubernetes
 import nhyne.kubernetes.Kubernetes.KubernetesService
+import zio.blocking.Blocking
 import zio.duration.Duration.fromMillis
 import zio.nio.file.Files
+import zio.nio.core.file.{Path => ZFPath}
+import zio.process.{Command, CommandError}
+
+import java.io.IOException
 
 object WebhookApi {
 
@@ -88,7 +94,7 @@ object WebhookApi {
                   for {
                     _ <- log.error(
                       s"failed to process PR event: ${pullRequestEvent.pullRequest
-                        .getBaseFullName()}#${pullRequestEvent.pullRequest.number}: ${thrown.getMessage}"
+                        .getBaseFullName()}#${pullRequestEvent.pullRequest.number}: $thrown"
                     )
                     _ <-
                       ZIO
@@ -147,7 +153,7 @@ object WebhookApi {
 
   private def pullRequestAction(
       event: PullRequestEvent
-  ): ZIO[ServerEnv, Throwable, Unit] = {
+  ): ZIO[ServerEnv, KredikError, Unit] = {
     event.action match {
       case ActionVerb.Opened      => openedPullRequest(event.pullRequest)
       case ActionVerb.Synchronize => synchronizedPullRequest(event.pullRequest)
@@ -155,11 +161,15 @@ object WebhookApi {
         ZIO
           .service[Kubernetes.Service]
           .flatMap(_.deletePRNamespace(event.pullRequest))
-          .mapBoth(k8sError => new Throwable(k8sError.toString), _ => ())
+          .mapBoth(k8sError => KredikError.K8sError(k8sError), _ => ())
       case ActionVerb.Unknown(actionType) =>
         log.warn(
           s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
-        ) *> ZIO.fail(new Throwable(s"unknown action type: $actionType"))
+        ) *> ZIO.fail(
+          KredikError.GeneralError(
+            new Throwable(s"unknown action type: $actionType")
+          )
+        )
       case ActionVerb.Created =>
         log.warn("got invalid verb {Created} verb for Pull Request")
     }
@@ -167,81 +177,129 @@ object WebhookApi {
 
   private def synchronizedPullRequest(
       pullRequest: PullRequest
-  ): ZIO[ServerEnv, Throwable, Unit] = openedPullRequest(pullRequest)
+  ): ZIO[ServerEnv, KredikError, Unit] = openedPullRequest(pullRequest)
 
   private def openedPullRequest(
       pullRequest: PullRequest
-  ): ZIO[ServerEnv, Throwable, Unit] = {
+  ): ZIO[ServerEnv, KredikError, Unit] = {
+    // We create two temp directories here because the dependencies do not get put into their own temp directories
+    //   The deps get cloned into the first temp dir here and are cleaned up when it gets cleaned up
+    //   It would be much better if the deps were put into their own managed temp dir but I have not had time to investigate
+    //      using a managed multiple times yet
     Files
       .createTempDirectoryManaged(
         Some(s"pr-${pullRequest.base.repo.name}-"),
         Seq.empty
       )
+      .mapError(KredikError.IOError)
       .use { path =>
-        Files.createTempDirectoryManaged(None, Seq.empty).use { repoDirectory =>
-          for {
-            _ <-
-              ZIO
-                .service[GitCli.Service]
-                .flatMap { git =>
-                  git.gitCloneAndMerge(
-                    pullRequest,
-                    repoDirectory
-                  )
-                }
-                .tapError(e => log.error(e.getCause.toString))
-            configSource <- ZIO.fromEither(
-              YamlConfigSource.fromYamlFile(
-                repoDirectory./(".watcher.yaml").toFile
-              )
-            )
-            initialRepoConfig <- ZIO.fromEither(
-              read(RepoConfig.repoConfigDescriptor.from(configSource))
-            )
+        Files
+          .createTempDirectoryManaged(None, Seq.empty)
+          .mapError(KredikError.IOError)
+          .use { repoDirectory =>
+            for {
+              _ <-
+                ZIO
+                  .service[GitCli.Service]
+                  .flatMap { git =>
+                    git.gitCloneAndMerge(
+                      pullRequest,
+                      repoDirectory
+                    )
+                  }
+                  .tapError(e => log.error(e.stdErr))
+              initialRepoConfig <- readConfig(repoDirectory)
+                .mapError(KredikError.IOReadError)
 
-            depsWithPaths <-
-              ZIO
-                .service[DependencyWalker.Service]
-                .flatMap(
-                  _.walkDependencies(
-                    initialRepoConfig,
-                    repoDirectory,
-                    pullRequest.head.sha,
-                    path
+              depsWithPaths <-
+                ZIO
+                  .service[DependencyWalker.Service]
+                  .flatMap(
+                    _.walkDependencies(
+                      initialRepoConfig,
+                      repoDirectory,
+                      pullRequest.head.sha,
+                      path
+                    )
                   )
-                )
-            k8sService <- ZIO.service[Kubernetes.Service]
-            namespace <-
-              k8sService
-                .createPRNamespace(pullRequest)
-                .mapError(e => new Throwable(e.toString))
-            templateService <- ZIO.service[template.Template.Service]
-            _ <- ZIO.foreach(depsWithPaths) {
-              case (repoConfig, (path, imageTag)) =>
-                for {
-                  _ <- log.info(s"templating $repoConfig with tag: $imageTag")
-                  templatedManifests <- templateService.templateManifests(
-                    repoConfig,
-                    path,
+              k8sService <- ZIO.service[Kubernetes.Service]
+              namespace <-
+                k8sService
+                  .createPRNamespace(pullRequest)
+                  .mapError(e => KredikError.K8sError(e))
+              templateService <- ZIO.service[template.Template.Service]
+              _ <- ZIO.foreach(depsWithPaths) {
+                case (repoConfig, (path, imageTag)) =>
+                  for {
+                    _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+                    templatedManifests <- templateService.templateManifests(
+                      repoConfig,
+                      path,
+                      namespace,
+                      imageTag
+                    )
+                    exitCode <-
+                      k8sService
+                        .applyFile(templatedManifests, namespace)
+                  } yield repoConfig -> exitCode
+              }
+              _ <-
+                templateService
+                  .injectEnvVarsIntoDeployments(
                     namespace,
-                    imageTag
+                    Map("PR_ENVIRONMENT" -> "TRUE")
                   )
-                  exitCode <-
-                    k8sService
-                      .applyFile(templatedManifests, namespace)
-                      .exitCode
-                } yield repoConfig -> exitCode
-            }
-            _ <-
-              templateService
-                .injectEnvVarsIntoDeployments(
-                  namespace,
-                  Map("PR_ENVIRONMENT" -> "TRUE")
-                )
-                .tapError(e => log.error(e.toString))
-                .mapError(e => new Throwable(e.toString))
-          } yield ()
-        }
+                  .tapError(e => log.error(e.toString))
+                  .mapError(KredikError.K8sError)
+            } yield ()
+          }
       }
+  }
+  private def readConfig(repoDirectory: ZFPath) =
+    for {
+      configSource <- ZIO.fromEither(
+        YamlConfigSource.fromYamlFile(
+          repoDirectory./(".watcher.yaml").toFile
+        )
+      )
+      initialRepoConfig <- ZIO.fromEither(
+        read(RepoConfig.repoConfigDescriptor.from(configSource))
+      )
+    } yield initialRepoConfig
+
+  // TODO: Move this into its own object
+  // TODO: Capture stdout as well for error and put it into the CliError type
+  // TODO: Can we stream the stdout + stderr to put them into a string in the order they were produced?
+  def commandToKredikExitCode(
+      command: Command
+  ): ZIO[Blocking, KredikError.CliError, ExitCode] =
+    for {
+      process <- command.run.mapError(KredikError.CliError(_, ""))
+      stdErr <- process.stderr.string.mapError(KredikError.CliError(_, ""))
+      exitCode <-
+        process.successfulExitCode.mapError(KredikError.CliError(_, stdErr))
+    } yield exitCode
+
+  def commandToKredikString(
+      command: Command
+  ): ZIO[Blocking, KredikError.CliError, String] =
+    for {
+      process <- command.run.mapError(KredikError.CliError(_, ""))
+      stdErr <- process.stderr.string.mapError(KredikError.CliError(_, ""))
+      stdOut <- process.stdout.string.mapError(KredikError.CliError(_, ""))
+      _ <- process.successfulExitCode.mapError(KredikError.CliError(_, stdErr))
+    } yield stdOut
+
+  // TODO: Refine these error types more
+  // TODO: Should all provide a 'pretty print' function for github comments
+
+  sealed trait KredikError
+  object KredikError {
+    final case class CliError(commandError: CommandError, stdErr: String)
+        extends KredikError
+    final case class GeneralError(cause: Throwable) extends KredikError
+    final case class K8sError(cause: K8sFailure) extends KredikError
+    final case class IOReadError(cause: ReadError[String]) extends KredikError
+    final case class IOError(cause: IOException) extends KredikError
   }
 }
