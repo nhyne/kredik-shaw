@@ -27,7 +27,8 @@ object GitCliSpec {
         ZIO.fail(
           CliError(
             CommandError.NonZeroErrorCode(ExitCode(2)),
-            "mock gitClone intended failure"
+            None,
+            Some("mock gitClone intended failure")
           )
         )
       else ZIO.succeed(ExitCode.success)
@@ -43,7 +44,8 @@ object GitCliSpec {
         ZIO.fail(
           CliError(
             CommandError.NonZeroErrorCode(ExitCode(2)),
-            "mock gitCloneDepth intended failure"
+            None,
+            Some("mock gitCloneDepth intended failure")
           )
         )
       else
@@ -56,7 +58,7 @@ object GitCliSpec {
                   PosixFilePermissions.fromString("rw-rw-rw-")
                 )
               )
-              .mapError(e => CliError(CommandError.IOError(e), ""))
+              .mapError(e => CliError(CommandError.IOError(e)))
           _ <-
             FileChannel
               .open(cloneInto./(".watcher.yaml"), StandardOpenOption.WRITE)
@@ -77,7 +79,7 @@ object GitCliSpec {
                   new IOException(s"could not write test config file: $e")
                 )
               )
-              .mapError(e => CliError(e, ""))
+              .mapError(e => CliError(e))
           exitCode <- ZIO.succeed(ExitCode.success)
         } yield exitCode
     }
@@ -90,7 +92,8 @@ object GitCliSpec {
         ZIO.fail(
           CliError(
             CommandError.NonZeroErrorCode(ExitCode(2)),
-            "mock gitCloneAndMerge intended failure"
+            None,
+            Some("mock gitCloneAndMerge intended failure")
           )
         )
       else ZIO.succeed(ExitCode.success)

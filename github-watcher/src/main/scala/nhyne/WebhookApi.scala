@@ -207,7 +207,9 @@ object WebhookApi {
                       repoDirectory
                     )
                   }
-                  .tapError(e => log.error(e.stdErr))
+                  .tapError(e =>
+                    log.error(e.stdErr.getOrElse(""))
+                  ) // TODO: Should use pretty print on kredik error type
               initialRepoConfig <- readConfig(repoDirectory)
                 .mapError(KredikError.IOReadError)
 
@@ -274,20 +276,24 @@ object WebhookApi {
       command: Command
   ): ZIO[Blocking, KredikError.CliError, ExitCode] =
     for {
-      process <- command.run.mapError(KredikError.CliError(_, ""))
-      stdErr <- process.stderr.string.mapError(KredikError.CliError(_, ""))
-      exitCode <-
-        process.successfulExitCode.mapError(KredikError.CliError(_, stdErr))
+      process <- command.run.mapError(KredikError.CliError(_))
+      stdErr <- process.stderr.string.mapError(KredikError.CliError(_))
+      stdOut <- process.stdout.string.mapError(KredikError.CliError(_))
+      exitCode <- process.successfulExitCode.mapError(
+        KredikError.CliError(_, stdOut, stdErr)
+      )
     } yield exitCode
 
   def commandToKredikString(
       command: Command
   ): ZIO[Blocking, KredikError.CliError, String] =
     for {
-      process <- command.run.mapError(KredikError.CliError(_, ""))
-      stdErr <- process.stderr.string.mapError(KredikError.CliError(_, ""))
-      stdOut <- process.stdout.string.mapError(KredikError.CliError(_, ""))
-      _ <- process.successfulExitCode.mapError(KredikError.CliError(_, stdErr))
+      process <- command.run.mapError(KredikError.CliError(_))
+      stdErr <- process.stderr.string.mapError(KredikError.CliError(_))
+      stdOut <- process.stdout.string.mapError(KredikError.CliError(_))
+      _ <- process.successfulExitCode.mapError(
+        KredikError.CliError(_, stdOut, stdErr)
+      )
     } yield stdOut
 
   // TODO: Refine these error types more
@@ -295,8 +301,20 @@ object WebhookApi {
 
   sealed trait KredikError
   object KredikError {
-    final case class CliError(commandError: CommandError, stdErr: String)
-        extends KredikError
+    final case class CliError(
+        commandError: CommandError,
+        stdOut: Option[String],
+        stdErr: Option[String]
+    ) extends KredikError
+    object CliError {
+      def apply(commandError: CommandError): CliError =
+        CliError(commandError, None, None)
+      def apply(
+          commandError: CommandError,
+          stdOut: String,
+          stdErr: String
+      ): CliError = CliError(commandError, Some(stdOut), Some(stdErr))
+    }
     final case class GeneralError(cause: Throwable) extends KredikError
     final case class K8sError(cause: K8sFailure) extends KredikError
     final case class IOReadError(cause: ReadError[String]) extends KredikError
