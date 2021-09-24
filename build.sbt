@@ -20,9 +20,9 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
   .enablePlugins(DockerPlugin, JavaAppPackaging)
   .settings(
     version := "0.0.1-SNAPSHOT",
-    organization := "dev.nhyne",
-    Compile / mainClass := Some("nhyne.Main"),
-    reStart / mainClass := Some("nhyne.Main"),
+    organization := "dev.dev.nhyne",
+    Compile / mainClass := Some("dev.nhyne.Main"),
+    reStart / mainClass := Some("dev.nhyne.Main"),
     scalaVersion := scala_2_13,
     dockerBaseImage := "nhyne/openjdk-kredik:16",
     Docker / daemonUser := "rashek",
