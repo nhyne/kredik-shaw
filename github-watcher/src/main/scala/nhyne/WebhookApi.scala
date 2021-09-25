@@ -1,5 +1,4 @@
 package nhyne
-import com.coralogix.zio.k8s.client.K8sFailure
 import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
 import zhttp.service._
 import zhttp.http._
@@ -16,7 +15,6 @@ import template.RepoConfig
 import zio.json._
 import zio.logging._
 import zio.config._
-import zio.console.putStrLn
 import nhyne.config.ApplicationConfig
 import zio.config.yaml.YamlConfigSource
 import nhyne.template.Template.TemplateService
@@ -25,13 +23,9 @@ import nhyne.git.{GitCli, GithubApi}
 import nhyne.git.GithubApi.{GithubApiService, SBackend}
 import nhyne.kubernetes.Kubernetes
 import nhyne.kubernetes.Kubernetes.KubernetesService
-import zio.blocking.Blocking
-import zio.duration.Duration.fromMillis
 import zio.nio.file.Files
 import zio.nio.core.file.{Path => ZFPath}
-import zio.process.{Command, CommandError}
-
-import java.io.IOException
+import nhyne.Errors._
 
 object WebhookApi {
 
@@ -116,7 +110,7 @@ object WebhookApi {
                 .forkDaemon // Forking once we have a valid body
             case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
               commentAction(issueCommentEvent).forkDaemon
-            case labelEvent: WebhookEvent.LabeledEvent => ???
+            case _ => ??? // TODO: Add label event logic -- do we need it?
           }
         } yield "OK"
       }
@@ -269,55 +263,4 @@ object WebhookApi {
       )
     } yield initialRepoConfig
 
-  // TODO: Move this into its own object
-  // TODO: Capture stdout as well for error and put it into the CliError type
-  // TODO: Can we stream the stdout + stderr to put them into a string in the order they were produced?
-  def commandToKredikExitCode(
-      command: Command
-  ): ZIO[Blocking, KredikError.CliError, ExitCode] =
-    for {
-      process <- command.run.mapError(KredikError.CliError(_))
-      stdErr <- process.stderr.string.mapError(KredikError.CliError(_))
-      stdOut <- process.stdout.string.mapError(KredikError.CliError(_))
-      exitCode <- process.successfulExitCode.mapError(
-        KredikError.CliError(_, stdOut, stdErr)
-      )
-    } yield exitCode
-
-  def commandToKredikString(
-      command: Command
-  ): ZIO[Blocking, KredikError.CliError, String] =
-    for {
-      process <- command.run.mapError(KredikError.CliError(_))
-      stdErr <- process.stderr.string.mapError(KredikError.CliError(_))
-      stdOut <- process.stdout.string.mapError(KredikError.CliError(_))
-      _ <- process.successfulExitCode.mapError(
-        KredikError.CliError(_, stdOut, stdErr)
-      )
-    } yield stdOut
-
-  // TODO: Refine these error types more
-  // TODO: Should all provide a 'pretty print' function for github comments
-
-  sealed trait KredikError
-  object KredikError {
-    final case class CliError(
-        commandError: CommandError,
-        stdOut: Option[String],
-        stdErr: Option[String]
-    ) extends KredikError
-    object CliError {
-      def apply(commandError: CommandError): CliError =
-        CliError(commandError, None, None)
-      def apply(
-          commandError: CommandError,
-          stdOut: String,
-          stdErr: String
-      ): CliError = CliError(commandError, Some(stdOut), Some(stdErr))
-    }
-    final case class GeneralError(cause: Throwable) extends KredikError
-    final case class K8sError(cause: K8sFailure) extends KredikError
-    final case class IOReadError(cause: ReadError[String]) extends KredikError
-    final case class IOError(cause: IOException) extends KredikError
-  }
 }

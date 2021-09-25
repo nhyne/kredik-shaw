@@ -3,7 +3,6 @@ package nhyne.git
 import nhyne.git.GithubApi.{GithubApiService, SBackend}
 import zio._
 import zio.system.{System, env}
-import sttp.client3._
 
 object Authentication {
 

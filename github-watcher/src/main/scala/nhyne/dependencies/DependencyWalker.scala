@@ -4,13 +4,10 @@ import nhyne.dependencies.DependencyConverter.DependencyConverterService
 import nhyne.git.GitCli.GitCliService
 import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
-import zio.blocking.Blocking
 import zio.logging.Logging
 import zio.{Has, Ref, ZEnv, ZIO, ZLayer}
 import zio.nio.core.file.Path
-import zio.random.Random
-import nhyne.config.ApplicationConfig
-import nhyne.WebhookApi.KredikError
+import nhyne.Errors.KredikError
 
 import scala.collection.immutable.Set
 
@@ -46,7 +43,7 @@ object DependencyWalker {
           workingDir,
           startingConfig.dependencies.getOrElse(Set.empty),
           Set.empty,
-          Map(startingConfig -> (startingRepoPath, ImageTag(startingSha)))
+          Map(startingConfig -> ((startingRepoPath, ImageTag(startingSha))))
         )
 
     }
@@ -85,8 +82,13 @@ object DependencyWalker {
                     processedConfigsRef.get.flatMap { processedConfigs =>
                       processedConfigsRef
                         .set(
-                          processedConfigs + (rc -> (path, dep.imageTag
-                            .getOrElse(ImageTag("latest"))))
+                          processedConfigs + (rc -> (
+                            (
+                              path,
+                              dep.imageTag
+                                .getOrElse(ImageTag("latest"))
+                            )
+                          ))
                         )
                         .flatMap(_ => ZIO.succeed(rc.dependencies))
                     }

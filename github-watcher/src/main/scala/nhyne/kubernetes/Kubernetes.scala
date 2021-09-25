@@ -21,8 +21,9 @@ import zio.nio.core.file.Path
 import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking
 import zio.logging.{Logging, log}
-import zio.process.{Command, CommandError}
-import nhyne.WebhookApi.{KredikError, commandToKredikExitCode}
+import zio.process.Command
+import nhyne.Errors.KredikError
+import nhyne.CommandWrapper.commandToKredikExitCode
 
 object Kubernetes {
 

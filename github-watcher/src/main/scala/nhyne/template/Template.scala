@@ -1,6 +1,6 @@
 package nhyne.template
 
-import nhyne.WebhookApi.commandToKredikString
+import nhyne.CommandWrapper.commandToKredikString
 import com.coralogix.zio.k8s.client.K8sFailure
 import nhyne.template.RepoConfig.ImageTag
 import zio.process._
@@ -19,8 +19,8 @@ import com.coralogix.zio.k8s.client.apps.v1.deployments.{
 }
 import com.coralogix.zio.k8s.client.model.K8sNamespace
 import com.coralogix.zio.k8s.model.apps.v1.Deployment
-import com.coralogix.zio.k8s.model.core.v1.{Container, EnvVar}
-import nhyne.WebhookApi.KredikError
+import com.coralogix.zio.k8s.model.core.v1.EnvVar
+import nhyne.Errors.KredikError
 
 object Template {
 

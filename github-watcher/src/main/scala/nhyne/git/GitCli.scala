@@ -1,7 +1,7 @@
 package nhyne.git
 
-import nhyne.WebhookApi.KredikError.CliError
-import nhyne.WebhookApi.commandToKredikExitCode
+import nhyne.Errors.KredikError.CliError
+import nhyne.CommandWrapper.commandToKredikExitCode
 import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking
 import nhyne.git.GitEvents._

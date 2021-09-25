@@ -10,7 +10,7 @@ import zio.config.yaml.YamlConfigSource
 import nhyne.git.GitEvents.{Branch, Repository}
 import nhyne.git.GitCli.GitCliService
 import zio.logging.{Logging, log}
-import nhyne.WebhookApi.KredikError
+import nhyne.Errors.KredikError
 
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"

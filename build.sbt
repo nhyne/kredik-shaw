@@ -29,7 +29,13 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
     dockerExposedPorts ++= Seq(8090, 9090),
     scalacOptions ++= Seq(
       "-Xfatal-warnings",
-      "-deprecation"
+      "-deprecation",
+      "-Xlint",
+      "-Ywarn-extra-implicit",
+      "-Ywarn-unused:patvars,-implicits",
+      "-Ywarn-value-discard",
+      "-opt-warnings",
+      "-feature"
     ),
     libraryDependencies ++=
       Seq(

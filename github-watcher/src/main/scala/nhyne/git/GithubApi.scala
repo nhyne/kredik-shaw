@@ -3,8 +3,6 @@ package nhyne.git
 import nhyne.git.Authentication.AuthenticationScheme
 import nhyne.git.GitEvents.{PullRequest, Repository}
 import zio._
-import zio.interop.catz._
-import zio.interop.catz.implicits._
 import sttp.client3._
 import sttp.capabilities
 import sttp.capabilities.zio.ZioStreams
