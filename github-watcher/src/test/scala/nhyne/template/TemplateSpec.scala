@@ -10,7 +10,7 @@ import com.coralogix.zio.k8s.model.core.v1.{
   PodSpec,
   PodTemplateSpec
 }
-import nhyne.template.Template.{Service, TemplateService, updateDeployEnvVars}
+import nhyne.template.Template.updateDeployEnvVars
 import zio.test.environment.TestEnvironment
 import zio.test._
 import zio.test.Assertion._

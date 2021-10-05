@@ -1,6 +1,6 @@
 package nhyne.git
 
-import nhyne.WebhookApi.KredikError.CliError
+import nhyne.Errors.KredikError.CliError
 import nhyne.git.GitCli.Service
 import nhyne.git.GitEvents.PullRequest
 import zio._
@@ -9,7 +9,6 @@ import zio.nio.channels.FileChannel
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.process.CommandError
-import zio.random.Random
 
 import java.io.IOException
 import java.nio.file.StandardOpenOption

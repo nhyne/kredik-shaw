@@ -2,7 +2,7 @@ package nhyne.git
 
 import nhyne.Errors.KredikError
 import nhyne.git.Authentication.AuthenticationScheme
-import nhyne.git.GitEvents.{PullRequest, Repository}
+import nhyne.git.GitEvents.{PullRequest, GitRef, Repository}
 import zio._
 import sttp.client3._
 import sttp.capabilities
@@ -63,8 +63,7 @@ object GithubApi {
             request = addAuthToRequest(
               basicRequest
                 .post(
-                  uri"https://api.github.com/repos/${pullRequest.getBaseOwner()}/${pullRequest
-                    .getBaseName()}/issues/${pullRequest.number}/comments"
+                  uri"https://api.github.com/repos/${pullRequest.getBaseOwner}/${pullRequest.getBaseRepoName}/issues/${pullRequest.number}/comments"
                 )
                 .header("Accept", "application/vnd.github.v3+json")
                 .response(asJson[CommentResponse])
@@ -104,6 +103,34 @@ object GithubApi {
                 .flatMap(res => ZIO.fromEither(res.body))
                 .mapError(e => KredikError.GeneralError(e))
           } yield response
+
+        override def getBranchSha(
+            repository: Repository,
+            branchName: String
+        ): ZIO[Has[
+          SBackend
+        ] with System with GitAuthenticationService, KredikError, String] =
+          for {
+            client <- ZIO.service[SBackend]
+            authScheme <-
+              ZIO
+                .service[Authentication.Service]
+                .flatMap(_.getAuthentication())
+            request = addAuthToRequest(
+              basicRequest
+                .get(
+                  uri"https://api.github.com/repos/${repository.owner.login}/${repository.name}/git/ref/heads/branchName"
+                )
+                .header("Accept", "application/vnd.github.v3+json")
+                .response(asJson[GitRef]),
+              authScheme
+            )
+            response <-
+              client
+                .send(request)
+                .flatMap(res => ZIO.fromEither(res.body))
+                .mapError(e => KredikError.GeneralError(e))
+          } yield response.`object`.sha
 
         override def validateAuth(
             credentials: AuthenticationScheme
@@ -176,6 +203,13 @@ object GithubApi {
     ): ZIO[Has[
       SBackend
     ] with System with GitAuthenticationService, KredikError, PullRequest]
+
+    def getBranchSha(
+        repository: Repository,
+        branchName: String
+    ): ZIO[Has[
+      SBackend
+    ] with System with GitAuthenticationService, KredikError, String]
 
     def validateAuth(
         credentials: AuthenticationScheme

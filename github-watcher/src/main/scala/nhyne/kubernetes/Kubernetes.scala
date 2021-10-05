@@ -14,7 +14,7 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
   ObjectMeta,
   Status
 }
-import nhyne.git.GitEvents.PullRequest
+import nhyne.git.GitEvents.{Branch, DeployableGitState, PullRequest}
 import nhyne.prometheus.Metrics
 import nhyne.prometheus.Metrics.MetricsService
 import zio.nio.core.file.Path
@@ -34,7 +34,7 @@ object Kubernetes {
         namespace: K8sNamespace
     ): ZIO[Blocking, KredikError, ExitCode]
     def createPRNamespace(
-        pullRequest: PullRequest
+        pullRequest: DeployableGitState
     ): ZIO[
       Namespaces with MetricsService with Logging,
       K8sFailure,
@@ -63,7 +63,7 @@ object Kubernetes {
       )
 
     override def createPRNamespace(
-        pullRequest: PullRequest
+        pullRequest: DeployableGitState
     ): ZIO[
       Namespaces with MetricsService with Logging,
       K8sFailure,
@@ -75,19 +75,19 @@ object Kubernetes {
           .foldM(
             {
               case NotFound =>
-                create(prNamespace).flatMap(_ =>
+                create(prNamespace) *> {
                   ZIO
                     .service[Metrics.Service]
-                    .flatMap(_.namespaceCreated(pullRequest.getBaseFullName()))
+                    .flatMap(_.namespaceCreated(pullRequest.getBaseFullName))
                     .catchAll { e =>
-                      log.error(e.toString) *> ZIO.unit
+                      log.error(e.toString).unit
                     }
-                )
+                }
               case e => ZIO.fail(e)
             },
             success => ZIO.succeed(success)
           )
-          .map(_ => K8sNamespace(nsName))
+          .as(K8sNamespace(nsName))
       } yield namespace
     }
 
@@ -104,11 +104,13 @@ object Kubernetes {
       ).foldM(
         {
           case NotFound =>
-            log.warn(
-              s"attempting to delete namespace: $nsName that does not exist"
-            ) *> ZIO.succeed(
-              Status(code = 200, message = s"namespace $nsName did not exist")
-            )
+            log
+              .warn(
+                s"attempting to delete namespace: $nsName that does not exist"
+              )
+              .as(
+                Status(code = 200, message = s"namespace $nsName did not exist")
+              )
           case f =>
             log.warn(s"failed to delete ns: $nsName with error: $f") *> ZIO
               .fail(
@@ -120,14 +122,18 @@ object Kubernetes {
     }
   })
 
-  def namespaceName(pullRequest: PullRequest): String = {
-    // TODO: This format will be bad for long repo names or those that start similarly
-    // TODO: Should start with `pr-` or something standard for RBAC permissions
-    s"${pullRequest.head.repo.name}-pr-${pullRequest.number}".trim
-      .take(63) // max length of namespace
+  def namespaceName(gitState: DeployableGitState): String = {
+    val namespace = gitState match {
+      case pr: PullRequest => s"pr-${pr.head.repo.name}-${pr.number}"
+      case branch: Branch =>
+        s"branch-${branch.repo.name}-${branch.ref}" // TODO: Should this have unique ID? -- Name of user?
+    }
+    namespace.trim.take(63) // max length of namespace
   }
-  private def namespaceObject(pullRequest: PullRequest): (String, Namespace) = {
-    val nsName = namespaceName(pullRequest)
+  private def namespaceObject(
+      gitState: DeployableGitState
+  ): (String, Namespace) = {
+    val nsName = namespaceName(gitState)
     (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))
   }
 

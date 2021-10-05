@@ -10,7 +10,14 @@ import nhyne.git.GitCli.GitCliService
 import nhyne.prometheus.Metrics.MetricsService
 import nhyne.dependencies.DependencyWalker.DependencyWalkerService
 import nhyne.git.Authentication.GitAuthenticationService
-import nhyne.git.GitEvents.{ActionVerb, PullRequest, WebhookEvent}
+import nhyne.git.GitEvents.{
+  ActionVerb,
+  Branch,
+  DeployableGitState,
+  PullRequest,
+  Repository,
+  WebhookEvent
+}
 import template.RepoConfig
 import zio.json._
 import zio.logging._
@@ -26,6 +33,7 @@ import nhyne.kubernetes.Kubernetes.KubernetesService
 import zio.nio.file.Files
 import zio.nio.core.file.{Path => ZFPath}
 import nhyne.Errors._
+import zio.blocking.Blocking
 
 object WebhookApi {
 
@@ -55,8 +63,8 @@ object WebhookApi {
             HttpError.InternalServerError(cause = Some(cause.toThrowable())),
           body => Response.text(body)
         )
-      case Method.POST -> `apiRoot` / "from-branch" / branchName =>
-        fromBranch(branchName).mapBoth(
+      case Method.POST -> `apiRoot` / "from-branch" / organization / repoName / branchName =>
+        fromBranch(organization, repoName, branchName).mapBoth(
           cause =>
             HttpError.InternalServerError(cause = Some(cause.toThrowable())),
           body => Response.text(body)
@@ -96,8 +104,7 @@ object WebhookApi {
                 .tapError(thrown =>
                   for {
                     _ <- log.error(
-                      s"failed to process PR event: ${pullRequestEvent.pullRequest
-                        .getBaseFullName()}#${pullRequestEvent.pullRequest.number}: $thrown"
+                      s"failed to process PR event: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number}: $thrown"
                     )
                     _ <-
                       ZIO
@@ -110,8 +117,7 @@ object WebhookApi {
                         )
                         .tapError(e =>
                           log.error(
-                            s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
-                              .getBaseFullName()}#${pullRequestEvent.pullRequest.number} due to: \n $e"
+                            s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number} due to: \n $e"
                           )
                         )
                   } yield ()
@@ -127,9 +133,35 @@ object WebhookApi {
         ZIO.fail(KredikError.GeneralError("did not receive a request body"))
     }
 
+  // TODO: Need full functionality: delete, sync
+  // TODO: This should NOT forkDaemon
   private def fromBranch(
+      organization: String,
+      repoName: String,
       branchName: String
-  ): ZIO[ServerEnv, KredikError, String] = ???
+  ): ZIO[ServerEnv, KredikError, String] = {
+
+    val repository = Repository.fromNameAndOwner(repoName, organization)
+    for {
+      gitBranchSha <-
+        ZIO
+          .service[GithubApi.Service]
+          .flatMap(_.getBranchSha(repository, branchName))
+      branch = Branch(branchName, gitBranchSha, repository)
+      _ <- createTempFoldersAndProcess(
+        branch,
+        {
+          case (repoDirectory, git) =>
+            git.gitClone(
+              repository,
+              branch,
+              repoDirectory
+            )
+        }
+      )
+
+    } yield "branch!"
+  }
 
   // TODO: Should come up with a series of commands
   // TODO: Going to need some basic parsing? Would be nice to have `sync <image tag>`
@@ -185,84 +217,107 @@ object WebhookApi {
       pullRequest: PullRequest
   ): ZIO[ServerEnv, KredikError, Unit] = openedPullRequest(pullRequest)
 
-  private def openedPullRequest(
-      pullRequest: PullRequest
-  ): ZIO[ServerEnv, KredikError, Unit] = {
-    // We create two temp directories here because the dependencies do not get put into their own temp directories
-    //   The deps get cloned into the first temp dir here and are cleaned up when it gets cleaned up
-    //   It would be much better if the deps were put into their own managed temp dir but I have not had time to investigate
-    //      using a managed multiple times yet
+  private def createTempFoldersAndProcess(
+      gitDeployable: DeployableGitState,
+      cloneCommand: (
+          ZFPath,
+          GitCli.Service
+      ) => ZIO[Blocking, KredikError.CliError, ExitCode]
+  ) = {
     Files
       .createTempDirectoryManaged(
-        Some(s"pr-${pullRequest.base.repo.name}-"),
+        Some(s"pr-${gitDeployable.getBaseRepoName}-"),
         Seq.empty
       )
       .mapError(KredikError.IOError)
-      .use { path =>
+      .use { rootWorkingDir =>
         Files
           .createTempDirectoryManaged(None, Seq.empty)
           .mapError(KredikError.IOError)
           .use { repoDirectory =>
             for {
-              _ <-
-                ZIO
-                  .service[GitCli.Service]
-                  .flatMap { git =>
-                    git.gitCloneAndMerge(
-                      pullRequest,
-                      repoDirectory
-                    )
-                  }
-                  .tapError(e =>
-                    log.error(e.stdErr.getOrElse(""))
-                  ) // TODO: Should use pretty print on kredik error type
-              initialRepoConfig <- readConfig(repoDirectory)
-                .mapError(KredikError.IOReadError)
-
-              depsWithPaths <-
-                ZIO
-                  .service[DependencyWalker.Service]
-                  .flatMap(
-                    _.walkDependencies(
-                      initialRepoConfig,
-                      repoDirectory,
-                      pullRequest.head.sha,
-                      path
-                    )
-                  )
-              k8sService <- ZIO.service[Kubernetes.Service]
-              namespace <-
-                k8sService
-                  .createPRNamespace(pullRequest)
-                  .mapError(e => KredikError.K8sError(e))
-              templateService <- ZIO.service[template.Template.Service]
-              _ <- ZIO.foreach_(depsWithPaths) {
-                case (repoConfig, (path, imageTag)) =>
-                  for {
-                    _ <- log.info(s"templating $repoConfig with tag: $imageTag")
-                    templatedManifests <- templateService.templateManifests(
-                      repoConfig,
-                      path,
-                      namespace,
-                      imageTag
-                    )
-                    exitCode <-
-                      k8sService
-                        .applyFile(templatedManifests, namespace)
-                  } yield repoConfig -> exitCode
-              }
-              _ <-
-                templateService
-                  .injectEnvVarsIntoDeployments(
-                    namespace,
-                    Map("PR_ENVIRONMENT" -> "TRUE")
-                  )
-                  .tapError(e => log.error(e.toString))
-                  .mapError(KredikError.K8sError)
+              gitCliService <- ZIO.service[GitCli.Service]
+              _ <- cloneCommand(repoDirectory, gitCliService)
+                .tapError(e =>
+                  log.error(e.stdErr.get).when(e.stdErr.nonEmpty)
+                ) // TODO: Should use pretty print on kredik error type
+              _ <- walkDepsAndApply(
+                repoDirectory,
+                rootWorkingDir,
+                gitDeployable
+              )
             } yield ()
+
           }
       }
   }
+
+  private def openedPullRequest(
+      pullRequest: PullRequest
+  ): ZIO[ServerEnv, KredikError, Unit] = {
+    createTempFoldersAndProcess(
+      pullRequest,
+      {
+        case (repoDirectory, git) =>
+          git.gitCloneAndMerge(
+            pullRequest,
+            repoDirectory
+          )
+      }
+    )
+  }
+
+  private def walkDepsAndApply(
+      repoDirectory: ZFPath,
+      workingDirectory: ZFPath,
+      gitDeployable: DeployableGitState
+  ) =
+    for {
+      initialRepoConfig <- readConfig(repoDirectory)
+        .mapError(KredikError.IOReadError)
+
+      depsWithPaths <-
+        ZIO
+          .service[DependencyWalker.Service]
+          .flatMap(
+            _.walkDependencies(
+              initialRepoConfig,
+              repoDirectory,
+              gitDeployable.getSha,
+              workingDirectory
+            )
+          )
+      k8sService <- ZIO.service[Kubernetes.Service]
+      namespace <-
+        k8sService
+          .createPRNamespace(gitDeployable)
+          .mapError(e => KredikError.K8sError(e))
+      templateService <- ZIO.service[template.Template.Service]
+      _ <- ZIO.foreach_(depsWithPaths) {
+        case (repoConfig, (path, imageTag)) =>
+          for {
+            _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+            templatedManifests <- templateService.templateManifests(
+              repoConfig,
+              path,
+              namespace,
+              imageTag
+            )
+            exitCode <-
+              k8sService
+                .applyFile(templatedManifests, namespace)
+          } yield repoConfig -> exitCode
+      }
+      _ <-
+        templateService
+          .injectEnvVarsIntoDeployments(
+            namespace,
+            Map("PR_ENVIRONMENT" -> "TRUE")
+          )
+          .tapError(e => log.error(e.toString))
+          .mapError(KredikError.K8sError)
+    } yield ()
+
   private def readConfig(repoDirectory: ZFPath) =
     for {
       configSource <- ZIO.fromEither(

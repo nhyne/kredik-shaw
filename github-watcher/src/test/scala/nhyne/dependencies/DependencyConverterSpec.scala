@@ -1,28 +1,22 @@
 package nhyne.dependencies
 
-import nhyne.WebhookApi.KredikError
+import nhyne.Errors.KredikError
 import nhyne.git.GitCliSpec
 import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
-import zio.{Chunk, Has, ULayer, ZIO, ZLayer}
+import zio.{Has, ULayer, ZIO, ZLayer}
 import zio.blocking.Blocking
 import zio.logging.Logging
 import zio.nio.core.file.Path
-import zio.clock.sleep
-import zio.duration.Duration.fromMillis
 import zio.nio.file.Files
 import zio.random.Random
 import zio.test._
 import zio.magic._
-import zio.nio.channels.FileChannel
 import zio.test.Assertion._
 import zio.test.environment.TestEnvironment
-import zio.test.mock.MockClock
 
 import java.io.File
-import java.nio.file.StandardOpenOption
-import java.nio.file.attribute.PosixFilePermissions
 import scala.collection.immutable.Set
 
 object DependencyConverterSpec extends DefaultRunnableSpec {
@@ -71,25 +65,35 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
 
   object MockDependencyConverter {
     private val testMap: Map[String, (RepoConfig, Path)] = Map(
-      "somewhere.test" -> (RepoConfig(
-        new File("abc"),
-        TemplateCommand.Helm,
-        None
-      ), Path("abc")),
-      "circular" -> (RepoConfig(
-        new File("itsacircle"),
-        TemplateCommand.Kustomize,
-        Some(
-          Set(
-            Dependency(
-              "circular",
-              "circular",
-              "circular",
-              Some(ImageTag("circular"))
-            )
-          )
+      "somewhere.test" -> (
+        (
+          RepoConfig(
+            new File("abc"),
+            TemplateCommand.Helm,
+            None
+          ),
+          Path("abc")
         )
-      ), Path("abc"))
+      ),
+      "circular" -> (
+        (
+          RepoConfig(
+            new File("itsacircle"),
+            TemplateCommand.Kustomize,
+            Some(
+              Set(
+                Dependency(
+                  "circular",
+                  "circular",
+                  "circular",
+                  Some(ImageTag("circular"))
+                )
+              )
+            )
+          ),
+          Path("abc")
+        )
+      )
     )
 
     val test: ULayer[Has[DependencyConverter.Service]] =
@@ -100,11 +104,11 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
         ): ZIO[Blocking with Random, KredikError, (RepoConfig, Path)] =
           ZIO
             .fromOption(testMap.get(dependency.owner))
-            .mapError(_ =>
+            .orElseFail {
               KredikError.GeneralError(
                 new Throwable("could not get item from test map")
               )
-            )
+            }
       })
 
   }

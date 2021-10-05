@@ -11,7 +11,7 @@ import zio.process.Command
 object GitCli {
 
   type GitCliService = Has[Service]
-  private type Env = Blocking
+  type Env = Blocking
 
   trait Service {
     def gitClone(
