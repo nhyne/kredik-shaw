@@ -67,7 +67,7 @@ object WebhookApi {
         fromBranch(organization, repoName, branchName).mapBoth(
           cause =>
             HttpError.InternalServerError(cause = Some(cause.toThrowable())),
-          body => Response.text(body)
+          _ => Response.text("OK")
         )
     }
 
@@ -139,7 +139,7 @@ object WebhookApi {
       organization: String,
       repoName: String,
       branchName: String
-  ): ZIO[ServerEnv, KredikError, String] = {
+  ): ZIO[ServerEnv, KredikError, Unit] = {
 
     val repository = Repository.fromNameAndOwner(repoName, organization)
     for {
@@ -160,7 +160,7 @@ object WebhookApi {
         }
       )
 
-    } yield "branch!"
+    } yield ()
   }
 
   // TODO: Should come up with a series of commands
@@ -204,9 +204,7 @@ object WebhookApi {
         log.warn(
           s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
         ) *> ZIO.fail(
-          KredikError.GeneralError(
-            new Throwable(s"unknown action type: $actionType")
-          )
+          KredikError.GeneralError(s"unknown action type: $actionType")
         )
       case ActionVerb.Created =>
         log.warn("got invalid verb {Created} verb for Pull Request")
