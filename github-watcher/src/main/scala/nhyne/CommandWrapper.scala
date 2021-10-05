@@ -6,8 +6,6 @@ import zio.process.Command
 
 object CommandWrapper {
 
-  // TODO: Move this into its own object
-  // TODO: Capture stdout as well for error and put it into the CliError type
   // TODO: Can we stream the stdout + stderr to put them into a string in the order they were produced?
   def commandToKredikExitCode(
       command: Command
