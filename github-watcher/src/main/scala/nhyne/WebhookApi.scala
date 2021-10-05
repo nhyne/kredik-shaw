@@ -50,9 +50,15 @@ object WebhookApi {
   private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM {
       case req @ Method.POST -> `apiRoot` =>
-        post(req).mapBoth(
+        githubWebhookPost(req).mapBoth(
           cause =>
-            HttpError.InternalServerError(cause = Some(new Throwable(cause))),
+            HttpError.InternalServerError(cause = Some(cause.toThrowable())),
+          body => Response.text(body)
+        )
+      case Method.POST -> `apiRoot` / "from-branch" / branchName =>
+        fromBranch(branchName).mapBoth(
+          cause =>
+            HttpError.InternalServerError(cause = Some(cause.toThrowable())),
           body => Response.text(body)
         )
     }
@@ -69,7 +75,9 @@ object WebhookApi {
     }
   }
 
-  private def post(request: Request): ZIO[ServerEnv, Throwable, String] =
+  private def githubWebhookPost(
+      request: Request
+  ): ZIO[ServerEnv, KredikError, String] =
     request.getBodyAsString match {
       case Some(body) => {
         val thing: Either[String, WebhookEvent] =
@@ -80,7 +88,8 @@ object WebhookApi {
               body.fromJson[LabeledEvent]
             ) // see comment around Webhook event trait
         for {
-          webhookEvent <- ZIO.fromEither(thing).mapError(new Throwable(_))
+          webhookEvent <-
+            ZIO.fromEither(thing).mapError(KredikError.GeneralError(_))
           _ <- webhookEvent match {
             case pullRequestEvent: WebhookEvent.PullRequestEvent =>
               pullRequestAction(pullRequestEvent)
@@ -102,7 +111,7 @@ object WebhookApi {
                         .tapError(e =>
                           log.error(
                             s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
-                              .getBaseFullName()}#${pullRequestEvent.pullRequest.number} due to: \n ${e.getMessage}"
+                              .getBaseFullName()}#${pullRequestEvent.pullRequest.number} due to: \n $e"
                           )
                         )
                   } yield ()
@@ -114,35 +123,38 @@ object WebhookApi {
           }
         } yield "OK"
       }
-      case None => ZIO.fail(new Throwable("did not receive a request body"))
+      case None =>
+        ZIO.fail(KredikError.GeneralError("did not receive a request body"))
     }
 
+  private def fromBranch(
+      branchName: String
+  ): ZIO[ServerEnv, KredikError, String] = ???
+
   // TODO: Should come up with a series of commands
+  // TODO: Going to need some basic parsing? Would be nice to have `sync <image tag>`
   /*
    * rebuild: just redoes templating and applies
    * restart: deletes namespace and then rebuilds
    * destroy: destroys namespace
    * status: gets status of object? -- could do a status: deployments which would get the status of all deploys in the namespace and comment them
-   *
    */
-  private def commentAction(comment: IssueCommentEvent) = {
-    if (comment.getBody() == "rebuild") {
-      for {
-        _ <- log.info(
-          s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
-        )
-        pr <-
-          ZIO
-            .service[GithubApi.Service]
-            .flatMap(
-              _.getPullRequest(comment.repository, comment.issue.prNumber)
-            )
-            .tapError(err => log.error(err.toString))
-        _ <- openedPullRequest(pr)
-      } yield ()
-    } else {
-      ZIO.unit
-    }
+  private def commentAction(
+      comment: IssueCommentEvent
+  ): ZIO[ServerEnv, KredikError, Unit] = {
+    (for {
+      _ <- log.info(
+        s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
+      )
+      pr <-
+        ZIO
+          .service[GithubApi.Service]
+          .flatMap(
+            _.getPullRequest(comment.repository, comment.issue.prNumber)
+          )
+          .tapError(err => log.error(err.toString))
+      _ <- openedPullRequest(pr)
+    } yield ()).when(comment.getBody() == "rebuild")
   }
 
   private def pullRequestAction(
@@ -224,7 +236,7 @@ object WebhookApi {
                   .createPRNamespace(pullRequest)
                   .mapError(e => KredikError.K8sError(e))
               templateService <- ZIO.service[template.Template.Service]
-              _ <- ZIO.foreach(depsWithPaths) {
+              _ <- ZIO.foreach_(depsWithPaths) {
                 case (repoConfig, (path, imageTag)) =>
                   for {
                     _ <- log.info(s"templating $repoConfig with tag: $imageTag")

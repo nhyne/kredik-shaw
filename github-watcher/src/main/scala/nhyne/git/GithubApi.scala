@@ -1,5 +1,6 @@
 package nhyne.git
 
+import nhyne.Errors.KredikError
 import nhyne.git.Authentication.AuthenticationScheme
 import nhyne.git.GitEvents.{PullRequest, Repository}
 import zio._
@@ -44,12 +45,13 @@ object GithubApi {
           } yield topics
 
         // TODO: Should tick metrics saying we commented on PR
+        // TODO: Should not take message, should take KredikError
         override def createComment(
             message: String,
             pullRequest: PullRequest
         ): ZIO[
           Has[SBackend] with GitAuthenticationService with System,
-          Throwable,
+          KredikError,
           CommentResponse
         ] =
           for {
@@ -73,11 +75,12 @@ object GithubApi {
               client
                 .send(request)
                 .flatMap(res => ZIO.fromEither(res.body))
+                .mapError(e => KredikError.GeneralError(e))
           } yield response
 
         override def getPullRequest(repository: Repository, number: Int): ZIO[
           Has[SBackend] with GitAuthenticationService with System,
-          Throwable,
+          KredikError,
           PullRequest
         ] =
           for {
@@ -99,6 +102,7 @@ object GithubApi {
               client
                 .send(request)
                 .flatMap(res => ZIO.fromEither(res.body))
+                .mapError(e => KredikError.GeneralError(e))
           } yield response
 
         override def validateAuth(
@@ -164,14 +168,14 @@ object GithubApi {
         pullRequest: PullRequest
     ): ZIO[Has[
       SBackend
-    ] with System with GitAuthenticationService, Throwable, CommentResponse]
+    ] with System with GitAuthenticationService, KredikError, CommentResponse]
 
     def getPullRequest(
         repository: Repository,
         number: Int
     ): ZIO[Has[
       SBackend
-    ] with System with GitAuthenticationService, Throwable, PullRequest]
+    ] with System with GitAuthenticationService, KredikError, PullRequest]
 
     def validateAuth(
         credentials: AuthenticationScheme
