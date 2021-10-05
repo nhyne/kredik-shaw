@@ -4,12 +4,10 @@ import nhyne.dependencies.DependencyConverter.DependencyConverterService
 import nhyne.git.GitCli.GitCliService
 import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
-import zio.blocking.Blocking
 import zio.logging.Logging
 import zio.{Has, Ref, ZEnv, ZIO, ZLayer}
 import zio.nio.core.file.Path
-import zio.random.Random
-import nhyne.config.ApplicationConfig
+import nhyne.Errors.KredikError
 
 import scala.collection.immutable.Set
 
@@ -28,7 +26,7 @@ object DependencyWalker {
         startingRepoPath: Path,
         startingSha: String, // TODO: Make this something besides a string
         workingDir: Path
-    ): ZIO[Env, Throwable, Map[RepoConfig, (Path, ImageTag)]]
+    ): ZIO[Env, KredikError, Map[RepoConfig, (Path, ImageTag)]]
   }
 
   // TODO: Want to pull in the functions in the parent object, just not sure about needing to mock all of them in a test or just the Dependency -> RepoConfig
@@ -40,12 +38,12 @@ object DependencyWalker {
           startingRepoPath: Path,
           startingSha: String,
           workingDir: Path
-      ): ZIO[Env, Throwable, Map[RepoConfig, (Path, ImageTag)]] =
+      ): ZIO[Env, KredikError, Map[RepoConfig, (Path, ImageTag)]] =
         walkDeps(
           workingDir,
           startingConfig.dependencies.getOrElse(Set.empty),
           Set.empty,
-          Map(startingConfig -> (startingRepoPath, ImageTag(startingSha)))
+          Map(startingConfig -> ((startingRepoPath, ImageTag(startingSha))))
         )
 
     }
@@ -62,7 +60,7 @@ object DependencyWalker {
       configs: Map[RepoConfig, (Path, ImageTag)]
   ): ZIO[
     Env,
-    Throwable,
+    KredikError,
     Map[
       RepoConfig,
       (Path, ImageTag)
@@ -84,8 +82,13 @@ object DependencyWalker {
                     processedConfigsRef.get.flatMap { processedConfigs =>
                       processedConfigsRef
                         .set(
-                          processedConfigs + (rc -> (path, dep.imageTag
-                            .getOrElse(ImageTag("latest"))))
+                          processedConfigs + (rc -> (
+                            (
+                              path,
+                              dep.imageTag
+                                .getOrElse(ImageTag("latest"))
+                            )
+                          ))
                         )
                         .flatMap(_ => ZIO.succeed(rc.dependencies))
                     }

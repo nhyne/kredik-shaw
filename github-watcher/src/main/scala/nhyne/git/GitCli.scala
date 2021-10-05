@@ -1,34 +1,36 @@
 package nhyne.git
 
+import nhyne.Errors.KredikError.CliError
+import nhyne.CommandWrapper.commandToKredikExitCode
 import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking
 import nhyne.git.GitEvents._
 import zio.nio.core.file.Path
-import zio.process.{Command, CommandError}
+import zio.process.Command
 
 object GitCli {
 
   type GitCliService = Has[Service]
-  private type Env = Blocking
+  type Env = Blocking
 
   trait Service {
     def gitClone(
         repository: Repository,
         branch: Branch,
         cloneInto: Path
-    ): ZIO[Env, CommandError, ExitCode]
+    ): ZIO[Env, CliError, ExitCode]
 
     def gitCloneDepth(
         repository: Repository,
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Env, CommandError, ExitCode]
+    ): ZIO[Env, CliError, ExitCode]
 
     def gitCloneAndMerge(
         pullRequest: PullRequest,
         cloneDir: Path
-    ): ZIO[Env, Throwable, ExitCode]
+    ): ZIO[Env, CliError, ExitCode]
   }
 
   val live = ZLayer.succeed(new Service {
@@ -37,35 +39,39 @@ object GitCli {
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Env, CommandError, ExitCode] =
-      Command(
-        "git",
-        "clone",
-        s"--depth=$depth",
-        s"--branch=${branch.ref}",
-        repository.sshUrl,
-        cloneInto.toString()
-      ).successfulExitCode
+    ): ZIO[Env, CliError, ExitCode] =
+      commandToKredikExitCode(
+        Command(
+          "git",
+          "clone",
+          s"--depth=$depth",
+          s"--branch=${branch.ref}",
+          repository.sshUrl,
+          cloneInto.toString()
+        )
+      )
 
     override def gitClone(
         repository: Repository,
         branch: Branch,
         cloneInto: Path
-    ): ZIO[Env, CommandError, ExitCode] =
-      Command(
-        "git",
-        "clone",
-        s"--branch=${branch.ref}",
-        repository.sshUrl,
-        cloneInto.toString()
-      ).successfulExitCode
+    ): ZIO[Env, CliError, ExitCode] =
+      commandToKredikExitCode(
+        Command(
+          "git",
+          "clone",
+          s"--branch=${branch.ref}",
+          repository.sshUrl,
+          cloneInto.toString()
+        )
+      )
 
     override def gitCloneAndMerge(
         pullRequest: PullRequest,
         cloneInto: Path
     ): ZIO[
       Env,
-      Throwable,
+      CliError,
       ExitCode
     ] =
       for {
@@ -74,9 +80,10 @@ object GitCli {
           pullRequest.head,
           cloneInto
         )
-        exitCode <- gitMerge(pullRequest.base)
-          .workingDirectory(cloneInto.toFile)
-          .successfulExitCode
+        exitCode <- commandToKredikExitCode(
+          gitMerge(pullRequest.base)
+            .workingDirectory(cloneInto.toFile)
+        )
       } yield exitCode
   })
 

@@ -1,5 +1,6 @@
 package nhyne.git
 
+import nhyne.Errors.KredikError
 import nhyne.git.Authentication.{AuthenticationScheme, GitAuthenticationService}
 import nhyne.git.GitEvents.PullRequest
 import nhyne.git.GithubApi.{
@@ -38,16 +39,24 @@ object GithubApiSpec {
           number: Int
       ): ZIO[
         Has[SBackend] with system.System with GitAuthenticationService,
-        Throwable,
+        KredikError,
         PullRequest
       ] = ???
+
+      override def getBranchSha(
+          repository: GitEvents.Repository,
+          branchName: String
+      ): ZIO[Has[
+        SBackend
+      ] with system.System with GitAuthenticationService, KredikError, String] =
+        ???
 
       override def createComment(
           message: String,
           pullRequest: PullRequest
       ): ZIO[
         Has[SBackend] with system.System with GitAuthenticationService,
-        Throwable,
+        KredikError,
         GithubApi.CommentResponse
       ] = ZIO.succeed(CommentResponse("a", "b", "c"))
     })

@@ -32,11 +32,21 @@ object GitEvents {
 
   }
 
+  sealed trait DeployableGitState {
+    def getBaseRepoName: String
+    def getBaseFullName: String
+    def getSha: String
+  }
+
   final case class Branch(
       ref: String,
       sha: String,
-      repo: Repository
-  ) // there are a lot more fields than just these
+      repo: Repository // there are a lot more fields than just these
+  ) extends DeployableGitState {
+    def getBaseRepoName: String = repo.name
+    def getBaseFullName: String = repo.fullName
+    def getSha: String = sha
+  }
 
   object Branch {
     def fromString(branchName: String, repo: Repository) =
@@ -50,10 +60,11 @@ object GitEvents {
       state: String, // TODO: Should be a union type when it is used
       head: Branch,
       base: Branch
-  ) {
-    def getBaseFullName() = base.repo.fullName
-    def getBaseName() = base.repo.name
-    def getBaseOwner() = base.repo.owner.login
+  ) extends DeployableGitState {
+    def getBaseFullName: String = base.repo.fullName
+    def getSha: String = head.sha
+    def getBaseRepoName: String = base.repo.name
+    def getBaseOwner: String = base.repo.owner.login
   }
   final case class Repository(
       name: String,
@@ -80,6 +91,14 @@ object GitEvents {
   final case class Comment(url: String, body: String)
   final case class Issue(@jsonField("number") prNumber: Int)
 
+  final case class GitRef(
+      `object`: GitRefObject
+  )
+
+  final case class GitRefObject(
+      sha: String
+  )
+
   sealed trait ActionVerb
 
   object ActionVerb {
@@ -102,6 +121,12 @@ object GitEvents {
         case actionType    => Unknown(actionType)
       }
   }
+
+  implicit val gitRefObjectDecoder: JsonDecoder[GitRefObject] =
+    DeriveJsonDecoder.gen[GitRefObject]
+  implicit val gitRefDecoder: JsonDecoder[GitRef] =
+    DeriveJsonDecoder.gen[GitRef]
+
   implicit val issueDecoder: JsonDecoder[Issue] = DeriveJsonDecoder.gen[Issue]
   implicit val ownerDecoder: JsonDecoder[Owner] = DeriveJsonDecoder.gen[Owner]
   implicit val repositoryDecoder: JsonDecoder[Repository] =

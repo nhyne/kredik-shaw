@@ -13,6 +13,8 @@ object Metrics {
     def namespaceDeleted(repository: String): Task[Unit]
   }
 
+  // TODO: Need metrics on failure cases
+  // TODO: Need to add labels for pull request number -- maybe?
   val live: ZLayer[Registry, Throwable, Has[Service]] = ZLayer.fromEffect {
     val createdNamespaces = "namespaces_created"
     val deletedNamespaces = "namespaces_deleted"

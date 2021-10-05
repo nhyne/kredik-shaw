@@ -10,12 +10,18 @@ import nhyne.git.GitCli.GitCliService
 import nhyne.prometheus.Metrics.MetricsService
 import nhyne.dependencies.DependencyWalker.DependencyWalkerService
 import nhyne.git.Authentication.GitAuthenticationService
-import nhyne.git.GitEvents.{ActionVerb, PullRequest, WebhookEvent}
+import nhyne.git.GitEvents.{
+  ActionVerb,
+  Branch,
+  DeployableGitState,
+  PullRequest,
+  Repository,
+  WebhookEvent
+}
 import template.RepoConfig
 import zio.json._
 import zio.logging._
 import zio.config._
-import zio.console.putStrLn
 import nhyne.config.ApplicationConfig
 import zio.config.yaml.YamlConfigSource
 import nhyne.template.Template.TemplateService
@@ -24,8 +30,10 @@ import nhyne.git.{GitCli, GithubApi}
 import nhyne.git.GithubApi.{GithubApiService, SBackend}
 import nhyne.kubernetes.Kubernetes
 import nhyne.kubernetes.Kubernetes.KubernetesService
-import zio.duration.Duration.fromMillis
 import zio.nio.file.Files
+import zio.nio.core.file.{Path => ZFPath}
+import nhyne.Errors._
+import zio.blocking.Blocking
 
 object WebhookApi {
 
@@ -50,10 +58,16 @@ object WebhookApi {
   private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM {
       case req @ Method.POST -> `apiRoot` =>
-        post(req).mapBoth(
+        githubWebhookPost(req).mapBoth(
           cause =>
-            HttpError.InternalServerError(cause = Some(new Throwable(cause))),
+            HttpError.InternalServerError(cause = Some(cause.toThrowable())),
           body => Response.text(body)
+        )
+      case Method.POST -> `apiRoot` / "from-branch" / organization / repoName / branchName =>
+        fromBranch(organization, repoName, branchName).mapBoth(
+          cause =>
+            HttpError.InternalServerError(cause = Some(cause.toThrowable())),
+          _ => Response.text("OK")
         )
     }
 
@@ -69,7 +83,9 @@ object WebhookApi {
     }
   }
 
-  private def post(request: Request): ZIO[ServerEnv, Throwable, String] =
+  private def githubWebhookPost(
+      request: Request
+  ): ZIO[ServerEnv, KredikError, String] =
     request.getBodyAsString match {
       case Some(body) => {
         val thing: Either[String, WebhookEvent] =
@@ -80,15 +96,15 @@ object WebhookApi {
               body.fromJson[LabeledEvent]
             ) // see comment around Webhook event trait
         for {
-          webhookEvent <- ZIO.fromEither(thing).mapError(new Throwable(_))
+          webhookEvent <-
+            ZIO.fromEither(thing).mapError(KredikError.GeneralError(_))
           _ <- webhookEvent match {
             case pullRequestEvent: WebhookEvent.PullRequestEvent =>
               pullRequestAction(pullRequestEvent)
                 .tapError(thrown =>
                   for {
                     _ <- log.error(
-                      s"failed to process PR event: ${pullRequestEvent.pullRequest
-                        .getBaseFullName()}#${pullRequestEvent.pullRequest.number}: ${thrown.getMessage}"
+                      s"failed to process PR event: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number}: $thrown"
                     )
                     _ <-
                       ZIO
@@ -101,8 +117,7 @@ object WebhookApi {
                         )
                         .tapError(e =>
                           log.error(
-                            s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest
-                              .getBaseFullName()}#${pullRequestEvent.pullRequest.number} due to: \n ${e.getMessage}"
+                            s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number} due to: \n $e"
                           )
                         )
                   } yield ()
@@ -110,44 +125,73 @@ object WebhookApi {
                 .forkDaemon // Forking once we have a valid body
             case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
               commentAction(issueCommentEvent).forkDaemon
-            case labelEvent: WebhookEvent.LabeledEvent => ???
+            case _ => ??? // TODO: Add label event logic -- do we need it?
           }
         } yield "OK"
       }
-      case None => ZIO.fail(new Throwable("did not receive a request body"))
+      case None =>
+        ZIO.fail(KredikError.GeneralError("did not receive a request body"))
     }
 
+  // TODO: Need full functionality: delete, sync
+  // TODO: This should NOT forkDaemon
+  private def fromBranch(
+      organization: String,
+      repoName: String,
+      branchName: String
+  ): ZIO[ServerEnv, KredikError, Unit] = {
+
+    val repository = Repository.fromNameAndOwner(repoName, organization)
+    for {
+      gitBranchSha <-
+        ZIO
+          .service[GithubApi.Service]
+          .flatMap(_.getBranchSha(repository, branchName))
+      branch = Branch(branchName, gitBranchSha, repository)
+      _ <- createTempFoldersAndProcess(
+        branch,
+        {
+          case (repoDirectory, git) =>
+            git.gitClone(
+              repository,
+              branch,
+              repoDirectory
+            )
+        }
+      )
+
+    } yield ()
+  }
+
   // TODO: Should come up with a series of commands
+  // TODO: Going to need some basic parsing? Would be nice to have `sync <image tag>`
   /*
    * rebuild: just redoes templating and applies
    * restart: deletes namespace and then rebuilds
    * destroy: destroys namespace
    * status: gets status of object? -- could do a status: deployments which would get the status of all deploys in the namespace and comment them
-   *
    */
-  private def commentAction(comment: IssueCommentEvent) = {
-    if (comment.getBody() == "rebuild") {
-      for {
-        _ <- log.info(
-          s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
-        )
-        pr <-
-          ZIO
-            .service[GithubApi.Service]
-            .flatMap(
-              _.getPullRequest(comment.repository, comment.issue.prNumber)
-            )
-            .tapError(err => log.error(err.toString))
-        _ <- openedPullRequest(pr)
-      } yield ()
-    } else {
-      ZIO.unit
-    }
+  private def commentAction(
+      comment: IssueCommentEvent
+  ): ZIO[ServerEnv, KredikError, Unit] = {
+    (for {
+      _ <- log.info(
+        s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
+      )
+      pr <-
+        ZIO
+          .service[GithubApi.Service]
+          .flatMap(
+            _.getPullRequest(comment.repository, comment.issue.prNumber)
+          )
+          .tapError(err => log.error(err.toString))
+      _ <- openedPullRequest(pr)
+    } yield ()).when(comment.getBody() == "rebuild")
   }
 
   private def pullRequestAction(
       event: PullRequestEvent
-  ): ZIO[ServerEnv, Throwable, Unit] = {
+  ): ZIO[ServerEnv, KredikError, Unit] = {
     event.action match {
       case ActionVerb.Opened      => openedPullRequest(event.pullRequest)
       case ActionVerb.Synchronize => synchronizedPullRequest(event.pullRequest)
@@ -155,11 +199,13 @@ object WebhookApi {
         ZIO
           .service[Kubernetes.Service]
           .flatMap(_.deletePRNamespace(event.pullRequest))
-          .mapBoth(k8sError => new Throwable(k8sError.toString), _ => ())
+          .mapBoth(k8sError => KredikError.K8sError(k8sError), _ => ())
       case ActionVerb.Unknown(actionType) =>
         log.warn(
           s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
-        ) *> ZIO.fail(new Throwable(s"unknown action type: $actionType"))
+        ) *> ZIO.fail(
+          KredikError.GeneralError(s"unknown action type: $actionType")
+        )
       case ActionVerb.Created =>
         log.warn("got invalid verb {Created} verb for Pull Request")
     }
@@ -167,81 +213,119 @@ object WebhookApi {
 
   private def synchronizedPullRequest(
       pullRequest: PullRequest
-  ): ZIO[ServerEnv, Throwable, Unit] = openedPullRequest(pullRequest)
+  ): ZIO[ServerEnv, KredikError, Unit] = openedPullRequest(pullRequest)
+
+  private def createTempFoldersAndProcess(
+      gitDeployable: DeployableGitState,
+      cloneCommand: (
+          ZFPath,
+          GitCli.Service
+      ) => ZIO[Blocking, KredikError.CliError, ExitCode]
+  ) = {
+    Files
+      .createTempDirectoryManaged(
+        Some(s"pr-${gitDeployable.getBaseRepoName}-"),
+        Seq.empty
+      )
+      .mapError(KredikError.IOError)
+      .use { rootWorkingDir =>
+        Files
+          .createTempDirectoryManaged(None, Seq.empty)
+          .mapError(KredikError.IOError)
+          .use { repoDirectory =>
+            for {
+              gitCliService <- ZIO.service[GitCli.Service]
+              _ <- cloneCommand(repoDirectory, gitCliService)
+                .tapError(e =>
+                  log.error(e.stdErr.get).when(e.stdErr.nonEmpty)
+                ) // TODO: Should use pretty print on kredik error type
+              _ <- walkDepsAndApply(
+                repoDirectory,
+                rootWorkingDir,
+                gitDeployable
+              )
+            } yield ()
+
+          }
+      }
+  }
 
   private def openedPullRequest(
       pullRequest: PullRequest
-  ): ZIO[ServerEnv, Throwable, Unit] = {
-    Files
-      .createTempDirectoryManaged(
-        Some(s"pr-${pullRequest.base.repo.name}-"),
-        Seq.empty
-      )
-      .use { path =>
-        Files.createTempDirectoryManaged(None, Seq.empty).use { repoDirectory =>
-          for {
-            _ <-
-              ZIO
-                .service[GitCli.Service]
-                .flatMap { git =>
-                  git.gitCloneAndMerge(
-                    pullRequest,
-                    repoDirectory
-                  )
-                }
-                .tapError(e => log.error(e.getCause.toString))
-            configSource <- ZIO.fromEither(
-              YamlConfigSource.fromYamlFile(
-                repoDirectory./(".watcher.yaml").toFile
-              )
-            )
-            initialRepoConfig <- ZIO.fromEither(
-              read(RepoConfig.repoConfigDescriptor.from(configSource))
-            )
-
-            depsWithPaths <-
-              ZIO
-                .service[DependencyWalker.Service]
-                .flatMap(
-                  _.walkDependencies(
-                    initialRepoConfig,
-                    repoDirectory,
-                    pullRequest.head.sha,
-                    path
-                  )
-                )
-            k8sService <- ZIO.service[Kubernetes.Service]
-            namespace <-
-              k8sService
-                .createPRNamespace(pullRequest)
-                .mapError(e => new Throwable(e.toString))
-            templateService <- ZIO.service[template.Template.Service]
-            _ <- ZIO.foreach(depsWithPaths) {
-              case (repoConfig, (path, imageTag)) =>
-                for {
-                  _ <- log.info(s"templating $repoConfig with tag: $imageTag")
-                  templatedManifests <- templateService.templateManifests(
-                    repoConfig,
-                    path,
-                    namespace,
-                    imageTag
-                  )
-                  exitCode <-
-                    k8sService
-                      .applyFile(templatedManifests, namespace)
-                      .exitCode
-                } yield repoConfig -> exitCode
-            }
-            _ <-
-              templateService
-                .injectEnvVarsIntoDeployments(
-                  namespace,
-                  Map("PR_ENVIRONMENT" -> "TRUE")
-                )
-                .tapError(e => log.error(e.toString))
-                .mapError(e => new Throwable(e.toString))
-          } yield ()
-        }
+  ): ZIO[ServerEnv, KredikError, Unit] = {
+    createTempFoldersAndProcess(
+      pullRequest,
+      {
+        case (repoDirectory, git) =>
+          git.gitCloneAndMerge(
+            pullRequest,
+            repoDirectory
+          )
       }
+    )
   }
+
+  private def walkDepsAndApply(
+      repoDirectory: ZFPath,
+      workingDirectory: ZFPath,
+      gitDeployable: DeployableGitState
+  ) =
+    for {
+      initialRepoConfig <- readConfig(repoDirectory)
+        .mapError(KredikError.IOReadError)
+
+      depsWithPaths <-
+        ZIO
+          .service[DependencyWalker.Service]
+          .flatMap(
+            _.walkDependencies(
+              initialRepoConfig,
+              repoDirectory,
+              gitDeployable.getSha,
+              workingDirectory
+            )
+          )
+      k8sService <- ZIO.service[Kubernetes.Service]
+      namespace <-
+        k8sService
+          .createPRNamespace(gitDeployable)
+          .mapError(e => KredikError.K8sError(e))
+      templateService <- ZIO.service[template.Template.Service]
+      _ <- ZIO.foreach_(depsWithPaths) {
+        case (repoConfig, (path, imageTag)) =>
+          for {
+            _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+            templatedManifests <- templateService.templateManifests(
+              repoConfig,
+              path,
+              namespace,
+              imageTag
+            )
+            exitCode <-
+              k8sService
+                .applyFile(templatedManifests, namespace)
+          } yield repoConfig -> exitCode
+      }
+      _ <-
+        templateService
+          .injectEnvVarsIntoDeployments(
+            namespace,
+            Map("PR_ENVIRONMENT" -> "TRUE")
+          )
+          .tapError(e => log.error(e.toString))
+          .mapError(KredikError.K8sError)
+    } yield ()
+
+  private def readConfig(repoDirectory: ZFPath) =
+    for {
+      configSource <- ZIO.fromEither(
+        YamlConfigSource.fromYamlFile(
+          repoDirectory./(".watcher.yaml").toFile
+        )
+      )
+      initialRepoConfig <- ZIO.fromEither(
+        read(RepoConfig.repoConfigDescriptor.from(configSource))
+      )
+    } yield initialRepoConfig
+
 }

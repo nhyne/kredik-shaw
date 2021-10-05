@@ -1,6 +1,6 @@
 package nhyne.git
 
-import nhyne.git.Authentication.{AuthenticationScheme, GitAuthenticationError}
+import nhyne.git.Authentication.{AuthenticationScheme}
 import zio._
 import zio.test._
 import zio.test.Assertion._

@@ -1,5 +1,6 @@
 package nhyne.template
 
+import nhyne.CommandWrapper.commandToKredikString
 import com.coralogix.zio.k8s.client.K8sFailure
 import nhyne.template.RepoConfig.ImageTag
 import zio.process._
@@ -18,48 +19,47 @@ import com.coralogix.zio.k8s.client.apps.v1.deployments.{
 }
 import com.coralogix.zio.k8s.client.model.K8sNamespace
 import com.coralogix.zio.k8s.model.apps.v1.Deployment
-import com.coralogix.zio.k8s.model.core.v1.{Container, EnvVar}
+import com.coralogix.zio.k8s.model.core.v1.EnvVar
+import nhyne.Errors.KredikError
 
 object Template {
 
   sealed trait TemplateCommand
 
-  /* Even with these basic template commands I will still need some way to
-   * substitute the image version and the namespace -- namespace should just be an apply -n <namespace>
-   *
-   * Will eventually need to be able to spawn DB pods and put their values into the config
-   *
-   * Kustomize offers some options for templating things in via their plugins
-   *    https://kubectl.docs.kubernetes.io/guides/extending_kustomize/builtins/
-   * These would all work but they require us to add `transformers` and/or `generators` sections in the kustomization.yaml file
-   *    We would either have to have defaults that get overwritten or the base would not be buildable outside kredik-shaw
-   *
-   * Easiest way to do env vars would be to just create a config map with keys/values and let other things pull them in? -- can this work for an image?
-   */
   object TemplateCommand {
     case object Helm extends TemplateCommand
     case object Kustomize extends TemplateCommand
     case object KustomizeHelm extends TemplateCommand
-    // case object None extends TemplateCommand -- this would essentially just read all the files into a string?
+    // case object None extends TemplateCommand -- this would essentially just read all the files into a string? -- would have to do a `sed`
   }
 
-  private def kustomizeCommand(dir: Path) =
-    dir.toAbsolutePath.map(path =>
-      Command("kustomize", "build", path.toString())
-    )
+  private def kustomizeCommand(path: Path) =
+    Command("kustomize", "build", path.toString())
+
+  private def kustomizeHelmCommand(path: Path) =
+    Command("kustomize", "build", "--enable-helm", path.toString())
+
+  private def helmCommand(dir: Path) = ???
 
   def template(
       dir: Path,
       config: RepoConfig
-  ): ZIO[Blocking, Throwable, String] =
-    config.templateCommand match {
-      case TemplateCommand.Helm => ???
-      case TemplateCommand.Kustomize =>
-        kustomizeCommand(dir./(config.resourceFolder.getName)).flatMap(
-          command => command.string
-        )
-      case TemplateCommand.KustomizeHelm => ???
-    }
+  ): ZIO[Blocking, KredikError, String] = {
+    for {
+      path <-
+        dir
+          ./(config.resourceFolder.getName)
+          .toAbsolutePath
+          .mapError(e => KredikError.GeneralError(e.getCause))
+      templateCommand = config.templateCommand match {
+        case TemplateCommand.Helm => helmCommand(path)
+        case TemplateCommand.Kustomize =>
+          kustomizeCommand(path)
+        case TemplateCommand.KustomizeHelm => kustomizeHelmCommand(path)
+      }
+      stdOut <- commandToKredikString(templateCommand)
+    } yield stdOut
+  }
 
   type TemplateService = Has[Service]
 
@@ -71,25 +71,31 @@ object Template {
             repoFolder: Path,
             namespace: K8sNamespace,
             imageTag: ImageTag
-        ): ZIO[Blocking, Throwable, Path] = {
+        ): ZIO[Blocking, KredikError, Path] = {
           for {
             templateOutput <- template(repoFolder, repoConfig)
               .map(
                 substituteNamespace(_, namespace.value)
               )
               .map(substituteImage(_, imageTag))
-            tempFilePath <- Files.createTempFile(
-              prefix = Some("templatedOutput"),
-              fileAttributes = Seq(
-                PosixFilePermissions.asFileAttribute(
-                  PosixFilePermissions.fromString("rw-rw-rw-")
+            tempFilePath <-
+              Files
+                .createTempFile(
+                  prefix = Some("templatedOutput"),
+                  fileAttributes = Seq(
+                    PosixFilePermissions.asFileAttribute(
+                      PosixFilePermissions.fromString("rw-rw-rw-")
+                    )
+                  )
                 )
-              )
-            )
-            _ <- FileChannel.open(tempFilePath, StandardOpenOption.WRITE).use {
-              channel =>
-                channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
-            }
+                .mapError(e => KredikError.GeneralError(e.getCause))
+            _ <-
+              FileChannel
+                .open(tempFilePath, StandardOpenOption.WRITE)
+                .use { channel =>
+                  channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
+                }
+                .mapError(e => KredikError.GeneralError(e))
           } yield tempFilePath
         }
         override def injectEnvVarsIntoDeployments(
@@ -139,7 +145,7 @@ object Template {
         repoFolder: Path,
         namespace: K8sNamespace,
         imageTag: ImageTag
-    ): ZIO[Blocking, Throwable, Path]
+    ): ZIO[Blocking, KredikError, Path]
 
     def injectEnvVarsIntoDeployments(
         namespace: K8sNamespace,

@@ -15,7 +15,7 @@ import zio.logging._
 import zio.config._
 import nhyne.config.ApplicationConfig
 import nhyne.git.Authentication.GitAuthenticationError
-import zio.config.yaml.{YamlConfig, YamlConfigSource}
+import zio.config.yaml.YamlConfigSource
 import nhyne.template.Template
 import zio.metrics.prometheus.Registry
 import zio.metrics.prometheus.exporters.Exporters

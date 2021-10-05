@@ -4,7 +4,7 @@ import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
-import nhyne.git.{GitCli, GitCliSpec}
+import nhyne.git.GitCliSpec
 import nhyne.template.{Dependency, RepoConfig}
 import zio.test.environment.TestEnvironment
 import zio._
@@ -19,7 +19,7 @@ import scala.collection.immutable.Set
 object DependencyWalkerSpec extends DefaultRunnableSpec {
   def spec: ZSpec[TestEnvironment, Any] =
     suite("repo config")(
-      testM("repo has no nhyne.dependencies") {
+      testM("repo has no dependencies") {
         val repoConfig = RepoConfig(new File("ccc"), TemplateCommand.Helm, None)
         Files
           .createTempDirectoryManaged(None, Seq.empty)
@@ -29,7 +29,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
                 .service[DependencyWalker.Service]
                 .flatMap(_.walkDependencies(repoConfig, path, "somesha", path))
             )(
-              equalTo(Map(repoConfig -> (path, ImageTag("somesha"))))
+              equalTo(Map(repoConfig -> ((path, ImageTag("somesha")))))
             )
           }
       },
@@ -51,12 +51,12 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
             )(
               equalTo(
                 Map(
-                  repoConfig -> (path, ImageTag("somesha")),
+                  repoConfig -> ((path, ImageTag("somesha"))),
                   RepoConfig(
                     new File("abc"),
                     TemplateCommand.Helm,
                     None
-                  ) -> (Path("abc"), ImageTag("latest"))
+                  ) -> ((Path("abc"), ImageTag("latest")))
                 )
               )
             )
@@ -85,13 +85,12 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
                 .service[DependencyWalker.Service]
                 .flatMap(_.walkDependencies(repoConfig, path, "somesha", path))
             )(
-              equalTo(Map(repoConfig -> (Path("abc"), ImageTag("circular"))))
+              equalTo(Map(repoConfig -> ((Path("abc"), ImageTag("circular")))))
             )
           }
       }
     ).injectSome(
       DependencyConverterSpec.MockDependencyConverter.test,
-//      GitSpec.test,
       Logging.console(),
       DependencyWalker.live,
       GitCliSpec.test

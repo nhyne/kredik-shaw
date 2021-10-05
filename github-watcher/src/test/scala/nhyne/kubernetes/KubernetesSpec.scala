@@ -7,7 +7,7 @@ import zio.test.environment.TestEnvironment
 
 object KubernetesSpec extends DefaultRunnableSpec {
   val spec: ZSpec[TestEnvironment, Any] =
-    suite("nhyne.kubernetes")(
+    suite("kubernetes")(
       test("basic namespace name creation") {
         val branch = Branch(
           "ref",
@@ -17,7 +17,7 @@ object KubernetesSpec extends DefaultRunnableSpec {
         val nsName = Kubernetes.namespaceName(
           PullRequest("url", 123, 5, "state", branch, branch)
         )
-        assert(nsName)(equalTo("name-pr-5"))
+        assert(nsName)(equalTo("pr-name-5"))
       },
       test("long namespace name creation") {
         val branch = Branch(
@@ -35,7 +35,7 @@ object KubernetesSpec extends DefaultRunnableSpec {
         val nsName = Kubernetes.namespaceName(
           PullRequest("url", 123, 5, "state", branch, branch)
         )
-        assert(nsName)(equalTo(("name" * 100).take(63)))
+        assert(nsName)(equalTo(("pr-" + "name" * 100).take(63)))
 
       }
     )
