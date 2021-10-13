@@ -4,12 +4,9 @@ import zhttp.service._
 import zhttp.http._
 import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
-import nhyne.dependencies.DependencyConverter.DependencyConverterService
+import nhyne.dependencies.DependencyConverter
 import nhyne.dependencies.DependencyWalker
-import nhyne.git.GitCli.GitCliService
 import nhyne.prometheus.Metrics.MetricsService
-import nhyne.dependencies.DependencyWalker.DependencyWalkerService
-import nhyne.git.Authentication.GitAuthenticationService
 import nhyne.git.GitEvents.{
   ActionVerb,
   Branch,
@@ -26,8 +23,8 @@ import nhyne.config.ApplicationConfig
 import zio.config.yaml.YamlConfigSource
 import nhyne.template.Template.TemplateService
 import nhyne.git.GitEvents.WebhookEvent._
-import nhyne.git.{GitCli, GithubApi}
-import nhyne.git.GithubApi.{GithubApiService, SBackend}
+import nhyne.git.{Authentication, GitCli, GithubApi}
+import nhyne.git.GithubApi.SBackend
 import nhyne.kubernetes.Kubernetes
 import nhyne.kubernetes.Kubernetes.KubernetesService
 import zio.nio.file.Files
@@ -42,13 +39,13 @@ object WebhookApi {
     with Deployments
     with Logging
     with TemplateService
-    with DependencyConverterService
+    with Has[DependencyConverter]
     with MetricsService
-    with GitCliService
+    with Has[GitCli]
     with KubernetesService
-    with DependencyWalkerService
-    with GithubApiService
-    with GitAuthenticationService
+    with Has[DependencyWalker]
+    with Has[GithubApi]
+    with Has[Authentication]
     with Has[SBackend]
     with Has[ApplicationConfig]
 
@@ -88,7 +85,7 @@ object WebhookApi {
   ): ZIO[ServerEnv, KredikError, String] =
     request.getBodyAsString match {
       case Some(body) => {
-        val thing: Either[String, WebhookEvent] =
+        val bodyType: Either[String, WebhookEvent] =
           body
             .fromJson[PullRequestEvent]
             .orElse(body.fromJson[IssueCommentEvent])
@@ -97,7 +94,7 @@ object WebhookApi {
             ) // see comment around Webhook event trait
         for {
           webhookEvent <-
-            ZIO.fromEither(thing).mapError(KredikError.GeneralError(_))
+            ZIO.fromEither(bodyType).mapError(KredikError.GeneralError(_))
           _ <- webhookEvent match {
             case pullRequestEvent: WebhookEvent.PullRequestEvent =>
               pullRequestAction(pullRequestEvent)
@@ -108,7 +105,7 @@ object WebhookApi {
                     )
                     _ <-
                       ZIO
-                        .service[GithubApi.Service]
+                        .service[GithubApi]
                         .flatMap(
                           _.createComment(
                             thrown.toString,
@@ -145,18 +142,17 @@ object WebhookApi {
     for {
       gitBranchSha <-
         ZIO
-          .service[GithubApi.Service]
+          .service[GithubApi]
           .flatMap(_.getBranchSha(repository, branchName))
       branch = Branch(branchName, gitBranchSha, repository)
       _ <- createTempFoldersAndProcess(
         branch,
-        {
-          case (repoDirectory, git) =>
-            git.gitClone(
-              repository,
-              branch,
-              repoDirectory
-            )
+        { case (repoDirectory, git) =>
+          git.gitClone(
+            repository,
+            branch,
+            repoDirectory
+          )
         }
       )
 
@@ -175,12 +171,12 @@ object WebhookApi {
       comment: IssueCommentEvent
   ): ZIO[ServerEnv, KredikError, Unit] = {
     (for {
-      _ <- log.info(
+      _ <- log.debug(
         s"rebuilding PR: ${comment.repository.fullName} ${comment.issue.prNumber}"
       )
       pr <-
         ZIO
-          .service[GithubApi.Service]
+          .service[GithubApi]
           .flatMap(
             _.getPullRequest(comment.repository, comment.issue.prNumber)
           )
@@ -219,7 +215,7 @@ object WebhookApi {
       gitDeployable: DeployableGitState,
       cloneCommand: (
           ZFPath,
-          GitCli.Service
+          GitCli
       ) => ZIO[Blocking, KredikError.CliError, ExitCode]
   ) = {
     Files
@@ -234,7 +230,7 @@ object WebhookApi {
           .mapError(KredikError.IOError)
           .use { repoDirectory =>
             for {
-              gitCliService <- ZIO.service[GitCli.Service]
+              gitCliService <- ZIO.service[GitCli]
               _ <- cloneCommand(repoDirectory, gitCliService)
                 .tapError(e =>
                   log.error(e.stdErr.get).when(e.stdErr.nonEmpty)
@@ -255,12 +251,11 @@ object WebhookApi {
   ): ZIO[ServerEnv, KredikError, Unit] = {
     createTempFoldersAndProcess(
       pullRequest,
-      {
-        case (repoDirectory, git) =>
-          git.gitCloneAndMerge(
-            pullRequest,
-            repoDirectory
-          )
+      { case (repoDirectory, git) =>
+        git.gitCloneAndMerge(
+          pullRequest,
+          repoDirectory
+        )
       }
     )
   }
@@ -276,7 +271,7 @@ object WebhookApi {
 
       depsWithPaths <-
         ZIO
-          .service[DependencyWalker.Service]
+          .service[DependencyWalker]
           .flatMap(
             _.walkDependencies(
               initialRepoConfig,
@@ -291,20 +286,19 @@ object WebhookApi {
           .createPRNamespace(gitDeployable)
           .mapError(e => KredikError.K8sError(e))
       templateService <- ZIO.service[template.Template.Service]
-      _ <- ZIO.foreach_(depsWithPaths) {
-        case (repoConfig, (path, imageTag)) =>
-          for {
-            _ <- log.info(s"templating $repoConfig with tag: $imageTag")
-            templatedManifests <- templateService.templateManifests(
-              repoConfig,
-              path,
-              namespace,
-              imageTag
-            )
-            exitCode <-
-              k8sService
-                .applyFile(templatedManifests, namespace)
-          } yield repoConfig -> exitCode
+      _ <- ZIO.foreach_(depsWithPaths) { case (repoConfig, (path, imageTag)) =>
+        for {
+          _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+          templatedManifests <- templateService.templateManifests(
+            repoConfig,
+            path,
+            namespace,
+            imageTag
+          )
+          exitCode <-
+            k8sService
+              .applyFile(templatedManifests, namespace)
+        } yield repoConfig -> exitCode
       }
       _ <-
         templateService

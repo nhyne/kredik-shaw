@@ -82,9 +82,8 @@ object Main extends App {
         GithubApi.live,
         Authentication.live
       )
-      .catchSome {
-        case GitAuthenticationError(message) =>
-          log.error(message) *> ZIO.fail(ExitCode.failure)
+      .catchSome { case GitAuthenticationError(message) =>
+        log.error(message) *> ZIO.fail(ExitCode.failure)
       }
       .inject(logger, ZEnv.live)
       .exitCode

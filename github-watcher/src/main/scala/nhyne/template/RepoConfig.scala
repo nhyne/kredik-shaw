@@ -36,9 +36,7 @@ final case class Dependency(
     name: String,
     branch: String,
     imageTag: Option[ImageTag]
-)
-
-object Dependency {
-  def repoUrl(dependency: Dependency): String =
-    s"https://github.com/${dependency.owner}/${dependency.name}"
+) {
+  def repoUrl(): String =
+    s"https://github.com/$owner/$name"
 }

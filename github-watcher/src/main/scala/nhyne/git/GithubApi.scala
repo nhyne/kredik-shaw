@@ -1,6 +1,7 @@
 package nhyne.git
 
 import nhyne.Errors.KredikError
+import nhyne.git.Authentication
 import nhyne.git.Authentication.AuthenticationScheme
 import nhyne.git.GitEvents.{PullRequest, GitRef, Repository}
 import zio._
@@ -9,21 +10,54 @@ import sttp.capabilities
 import sttp.capabilities.zio.ZioStreams
 import sttp.client3.ziojson._
 import zio.json._
-import nhyne.git.Authentication.GitAuthenticationService
 import zio.system.System
 
-object GithubApi {
+trait GithubApi {
+  import nhyne.git.GithubApi._
 
+  def getTopics(
+      org: String,
+      repo: String
+  ): ZIO[Has[
+    SBackend
+  ] with System with Has[Authentication], Throwable, Topics]
+
+  def createComment(
+      message: String,
+      pullRequest: PullRequest
+  ): ZIO[Has[
+    SBackend
+  ] with System with Has[Authentication], KredikError, CommentResponse]
+
+  def getPullRequest(
+      repository: Repository,
+      number: Int
+  ): ZIO[Has[SBackend] with System with Has[
+    Authentication
+  ], KredikError, PullRequest]
+
+  def getBranchSha(
+      repository: Repository,
+      branchName: String
+  ): ZIO[Has[
+    SBackend
+  ] with System with Has[Authentication], KredikError, String]
+
+  def validateAuth(
+      credentials: AuthenticationScheme
+  ): ZIO[Has[SBackend], Throwable, Boolean]
+}
+object GithubApi {
   type SBackend = SttpBackend[Task, ZioStreams with capabilities.WebSockets]
 
-  val live: ZLayer[Has[SBackend], Throwable, GithubApiService] =
+  val live: ZLayer[Has[SBackend], Throwable, Has[GithubApi]] =
     ZLayer.succeed(
-      new Service {
+      new GithubApi {
         override def getTopics(
             org: String,
             repo: String
         ): ZIO[
-          Has[SBackend] with GitAuthenticationService with System,
+          Has[SBackend] with Has[Authentication] with System,
           Throwable,
           Topics
         ] =
@@ -31,7 +65,7 @@ object GithubApi {
             client <- ZIO.service[SBackend]
             authScheme <-
               ZIO
-                .service[Authentication.Service]
+                .service[Authentication]
                 .flatMap(_.getAuthentication())
             request = addAuthToRequest(
               basicRequest
@@ -50,7 +84,7 @@ object GithubApi {
             message: String,
             pullRequest: PullRequest
         ): ZIO[
-          Has[SBackend] with GitAuthenticationService with System,
+          Has[SBackend] with Has[Authentication] with System,
           KredikError,
           CommentResponse
         ] =
@@ -58,7 +92,7 @@ object GithubApi {
             client <- ZIO.service[SBackend]
             authScheme <-
               ZIO
-                .service[Authentication.Service]
+                .service[Authentication]
                 .flatMap(_.getAuthentication())
             request = addAuthToRequest(
               basicRequest
@@ -78,7 +112,7 @@ object GithubApi {
           } yield response
 
         override def getPullRequest(repository: Repository, number: Int): ZIO[
-          Has[SBackend] with GitAuthenticationService with System,
+          Has[SBackend] with Has[Authentication] with System,
           KredikError,
           PullRequest
         ] =
@@ -86,7 +120,7 @@ object GithubApi {
             client <- ZIO.service[SBackend]
             authScheme <-
               ZIO
-                .service[Authentication.Service]
+                .service[Authentication]
                 .flatMap(_.getAuthentication())
             request = addAuthToRequest(
               basicRequest
@@ -109,12 +143,12 @@ object GithubApi {
             branchName: String
         ): ZIO[Has[
           SBackend
-        ] with System with GitAuthenticationService, KredikError, String] =
+        ] with System with Has[Authentication], KredikError, String] =
           for {
             client <- ZIO.service[SBackend]
             authScheme <-
               ZIO
-                .service[Authentication.Service]
+                .service[Authentication]
                 .flatMap(_.getAuthentication())
             request = addAuthToRequest(
               basicRequest
@@ -180,39 +214,4 @@ object GithubApi {
     DeriveJsonEncoder.gen[CommentBody]
   final case class CommentBody(body: String)
 
-  type GithubApiService = Has[Service]
-
-  trait Service {
-    def getTopics(
-        org: String,
-        repo: String
-    ): ZIO[Has[
-      SBackend
-    ] with System with GitAuthenticationService, Throwable, Topics]
-
-    def createComment(
-        message: String,
-        pullRequest: PullRequest
-    ): ZIO[Has[
-      SBackend
-    ] with System with GitAuthenticationService, KredikError, CommentResponse]
-
-    def getPullRequest(
-        repository: Repository,
-        number: Int
-    ): ZIO[Has[
-      SBackend
-    ] with System with GitAuthenticationService, KredikError, PullRequest]
-
-    def getBranchSha(
-        repository: Repository,
-        branchName: String
-    ): ZIO[Has[
-      SBackend
-    ] with System with GitAuthenticationService, KredikError, String]
-
-    def validateAuth(
-        credentials: AuthenticationScheme
-    ): ZIO[Has[SBackend], Throwable, Boolean]
-  }
 }

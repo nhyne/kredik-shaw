@@ -26,7 +26,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
           .use { path =>
             assertM(
               ZIO
-                .service[DependencyWalker.Service]
+                .service[DependencyWalker]
                 .flatMap(_.walkDependencies(repoConfig, path, "somesha", path))
             )(
               equalTo(Map(repoConfig -> ((path, ImageTag("somesha")))))
@@ -44,7 +44,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
           .use { path =>
             assertM(
               ZIO
-                .service[DependencyWalker.Service]
+                .service[DependencyWalker]
                 .flatMap(
                   _.walkDependencies(repoConfig, path, "somesha", path)
                 )
@@ -82,7 +82,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
           .use { path =>
             assertM(
               ZIO
-                .service[DependencyWalker.Service]
+                .service[DependencyWalker]
                 .flatMap(_.walkDependencies(repoConfig, path, "somesha", path))
             )(
               equalTo(Map(repoConfig -> ((Path("abc"), ImageTag("circular")))))

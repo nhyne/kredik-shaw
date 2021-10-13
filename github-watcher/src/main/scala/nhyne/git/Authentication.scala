@@ -1,30 +1,29 @@
 package nhyne.git
 
-import nhyne.git.GithubApi.{GithubApiService, SBackend}
+import nhyne.git.GithubApi.SBackend
 import zio._
 import zio.system.{System, env}
 
-object Authentication {
+trait Authentication {
+  import nhyne.git.Authentication.AuthenticationScheme
+  def getAuthentication(): UIO[AuthenticationScheme]
+}
 
+object Authentication {
   private val GITHUB_BEARER_TOKEN = "GITHUB_BEARER_TOKEN"
   private val GITHUB_USERNAME = "GITHUB_USERNAME"
   private val GITHUB_TOKEN = "GITHUB_TOKEN"
 
-  type GitAuthenticationService = Has[Service]
-  trait Service {
-    def getAuthentication(): UIO[AuthenticationScheme]
-  }
-
   final case class GitAuthenticationError(message: String)
 
-  val live: ZLayer[Has[SBackend] with System with GithubApiService, Object, Has[
-    Service
+  val live: ZLayer[Has[SBackend] with System with Has[GithubApi], Object, Has[
+    Authentication
   ]] =
     ZLayer.fromEffect(for {
       authentication <- readAuthVars()
       isValid <-
         ZIO
-          .service[GithubApi.Service]
+          .service[GithubApi]
           .flatMap(
             _.validateAuth(authentication).mapError(authFailure =>
               GitAuthenticationError(s"Could not validate auth: $authFailure")
@@ -38,7 +37,7 @@ object Authentication {
             )
           )
           .when(!isValid)
-    } yield new Service {
+    } yield new Authentication {
       private val auth: AuthenticationScheme = authentication
       override def getAuthentication(): UIO[AuthenticationScheme] =
         ZIO.succeed(auth)

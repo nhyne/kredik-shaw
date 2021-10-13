@@ -2,44 +2,40 @@ package nhyne.git
 
 import nhyne.Errors.KredikError.CliError
 import nhyne.CommandWrapper.commandToKredikExitCode
-import zio.{ExitCode, Has, ZIO, ZLayer}
+import zio.{ExitCode, ZIO, ZLayer}
 import zio.blocking.Blocking
 import nhyne.git.GitEvents._
 import zio.nio.core.file.Path
 import zio.process.Command
 
+trait GitCli {
+  def gitClone(
+      repository: Repository,
+      branch: Branch,
+      cloneInto: Path
+  ): ZIO[Blocking, CliError, ExitCode]
+
+  def gitCloneDepth(
+      repository: Repository,
+      branch: Branch,
+      depth: Int,
+      cloneInto: Path
+  ): ZIO[Blocking, CliError, ExitCode]
+
+  def gitCloneAndMerge(
+      pullRequest: PullRequest,
+      cloneDir: Path
+  ): ZIO[Blocking, CliError, ExitCode]
+}
 object GitCli {
 
-  type GitCliService = Has[Service]
-  type Env = Blocking
-
-  trait Service {
-    def gitClone(
-        repository: Repository,
-        branch: Branch,
-        cloneInto: Path
-    ): ZIO[Env, CliError, ExitCode]
-
-    def gitCloneDepth(
-        repository: Repository,
-        branch: Branch,
-        depth: Int,
-        cloneInto: Path
-    ): ZIO[Env, CliError, ExitCode]
-
-    def gitCloneAndMerge(
-        pullRequest: PullRequest,
-        cloneDir: Path
-    ): ZIO[Env, CliError, ExitCode]
-  }
-
-  val live = ZLayer.succeed(new Service {
+  val live = ZLayer.succeed(new GitCli {
     override def gitCloneDepth(
         repository: Repository,
         branch: Branch,
         depth: Int,
         cloneInto: Path
-    ): ZIO[Env, CliError, ExitCode] =
+    ): ZIO[Blocking, CliError, ExitCode] =
       commandToKredikExitCode(
         Command(
           "git",
@@ -55,7 +51,7 @@ object GitCli {
         repository: Repository,
         branch: Branch,
         cloneInto: Path
-    ): ZIO[Env, CliError, ExitCode] =
+    ): ZIO[Blocking, CliError, ExitCode] =
       commandToKredikExitCode(
         Command(
           "git",
@@ -70,7 +66,7 @@ object GitCli {
         pullRequest: PullRequest,
         cloneInto: Path
     ): ZIO[
-      Env,
+      Blocking,
       CliError,
       ExitCode
     ] =

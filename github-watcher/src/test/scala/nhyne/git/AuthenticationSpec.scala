@@ -1,6 +1,6 @@
 package nhyne.git
 
-import nhyne.git.Authentication.{AuthenticationScheme}
+import nhyne.git.Authentication.AuthenticationScheme
 import zio._
 import zio.test._
 import zio.test.Assertion._
@@ -20,7 +20,7 @@ object AuthenticationSpec extends DefaultRunnableSpec {
         for {
           authValue <-
             ZIO
-              .service[Authentication.Service]
+              .service[Authentication]
               .flatMap(auth => auth.getAuthentication())
               .inject(
                 HttpClientZioBackend.layer(),
@@ -39,7 +39,7 @@ object AuthenticationSpec extends DefaultRunnableSpec {
         for {
           authValue <-
             ZIO
-              .service[Authentication.Service]
+              .service[Authentication]
               .flatMap(auth => auth.getAuthentication())
               .inject(
                 GithubApiSpec.test,

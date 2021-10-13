@@ -8,7 +8,6 @@ import zio.nio.file.Files
 import zio._
 import zio.config.yaml.YamlConfigSource
 import nhyne.git.GitEvents.{Branch, Repository}
-import nhyne.git.GitCli.GitCliService
 import zio.logging.{Logging, log}
 import nhyne.Errors.KredikError
 
@@ -16,10 +15,10 @@ trait DependencyConverter {
 
   // TODO: This should return a managed Path
   def dependencyToRepoConfig(
-                              dependency: Dependency,
-                              workingDir: Path
-                            ): ZIO[
-    ZEnv with GitCliService with Logging,
+      dependency: Dependency,
+      workingDir: Path
+  ): ZIO[
+    ZEnv with Has[GitCli] with Logging,
     KredikError,
     (RepoConfig, Path)
   ]
@@ -63,7 +62,7 @@ object DependencyConverter {
           dependency: Dependency,
           workingDir: Path
       ): ZIO[
-        ZEnv with GitCliService with Logging,
+        ZEnv with Has[GitCli] with Logging,
         KredikError,
         (RepoConfig, Path)
       ] = {
@@ -74,7 +73,7 @@ object DependencyConverter {
           repo = Repository.fromNameAndOwner(dependency.name, dependency.owner)
           _ <-
             ZIO
-              .service[GitCli.Service]
+              .service[GitCli]
               .flatMap(git =>
                 git.gitCloneDepth(
                   repo,

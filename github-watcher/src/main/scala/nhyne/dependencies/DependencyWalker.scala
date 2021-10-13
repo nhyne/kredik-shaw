@@ -1,7 +1,6 @@
 package nhyne.dependencies
 
-import nhyne.dependencies.DependencyConverter
-import nhyne.git.GitCli.GitCliService
+import nhyne.git.GitCli
 import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
 import zio.logging.Logging
@@ -11,34 +10,30 @@ import nhyne.Errors.KredikError
 
 import scala.collection.immutable.Set
 
+trait DependencyWalker {
+  def walkDependencies(
+      startingConfig: RepoConfig,
+      startingRepoPath: Path,
+      startingSha: String, // TODO: Make this something besides a string
+      workingDir: Path
+  ): ZIO[ZEnv with Has[DependencyConverter] with Has[
+    GitCli
+  ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]]
+}
 object DependencyWalker {
-  private type Env = ZEnv
-    with Has[DependencyConverter]
-    with GitCliService
-    with Logging
-//    with Has[ApplicationConfig]
-
-  type DependencyWalkerService = Has[Service]
-
-  trait Service {
-    def walkDependencies(
-        startingConfig: RepoConfig,
-        startingRepoPath: Path,
-        startingSha: String, // TODO: Make this something besides a string
-        workingDir: Path
-    ): ZIO[Env, KredikError, Map[RepoConfig, (Path, ImageTag)]]
-  }
 
   // TODO: Want to pull in the functions in the parent object, just not sure about needing to mock all of them in a test or just the Dependency -> RepoConfig
   //    maybe the Dependency -> RepoConfig function could be its own service?
   val live = ZLayer.succeed(
-    new Service {
+    new DependencyWalker {
       override def walkDependencies(
           startingConfig: RepoConfig,
           startingRepoPath: Path,
           startingSha: String,
           workingDir: Path
-      ): ZIO[Env, KredikError, Map[RepoConfig, (Path, ImageTag)]] =
+      ): ZIO[ZEnv with Has[DependencyConverter] with Has[
+        GitCli
+      ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]] =
         walkDeps(
           workingDir,
           startingConfig.dependencies.getOrElse(Set.empty),
@@ -59,7 +54,7 @@ object DependencyWalker {
       seenDeps: Set[Dependency],
       configs: Map[RepoConfig, (Path, ImageTag)]
   ): ZIO[
-    Env,
+    ZEnv with Has[DependencyConverter] with Has[GitCli] with Logging,
     KredikError,
     Map[
       RepoConfig,

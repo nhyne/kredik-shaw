@@ -32,7 +32,7 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
               for {
                 stuff <-
                   ZIO
-                    .service[DependencyConverter.Service]
+                    .service[DependencyConverter]
                     .flatMap(_.dependencyToRepoConfig(dependency, path))
               } yield stuff._1
             )(
@@ -96,8 +96,8 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
       )
     )
 
-    val test: ULayer[Has[DependencyConverter.Service]] =
-      ZLayer.succeed(new DependencyConverter.Service {
+    val test: ULayer[Has[DependencyConverter]] =
+      ZLayer.succeed(new DependencyConverter {
         override def dependencyToRepoConfig(
             dependency: Dependency,
             workingDir: Path

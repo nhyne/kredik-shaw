@@ -1,7 +1,7 @@
 package nhyne.git
 
 import nhyne.Errors.KredikError.CliError
-import nhyne.git.GitCli.Service
+import nhyne.git.GitCli
 import nhyne.git.GitEvents.PullRequest
 import zio._
 import zio.blocking.Blocking
@@ -16,7 +16,7 @@ import java.nio.file.attribute.PosixFilePermissions
 
 object GitCliSpec {
 
-  val test: ULayer[Has[GitCli.Service]] = ZLayer.succeed(new Service {
+  val test: ULayer[Has[GitCli]] = ZLayer.succeed(new GitCli {
     override def gitClone(
         repository: GitEvents.Repository,
         branch: GitEvents.Branch,

@@ -1,21 +1,15 @@
 package nhyne.git
 
 import nhyne.Errors.KredikError
-import nhyne.git.Authentication.{AuthenticationScheme, GitAuthenticationService}
+import nhyne.git.Authentication.AuthenticationScheme
 import nhyne.git.GitEvents.PullRequest
-import nhyne.git.GithubApi.{
-  CommentResponse,
-  GithubApiService,
-  SBackend,
-  Service,
-  Topics
-}
+import nhyne.git.GithubApi.{CommentResponse, SBackend, Topics}
 import zio.{Has, ZIO, ZLayer, system}
 
 object GithubApiSpec {
 
-  val test: ZLayer[Has[SBackend], Throwable, GithubApiService] =
-    ZLayer.succeed(new Service {
+  val test: ZLayer[Has[SBackend], Throwable, Has[GithubApi]] =
+    ZLayer.succeed(new GithubApi {
       override def getTopics(
           org: String,
           repo: String
@@ -38,7 +32,7 @@ object GithubApiSpec {
           repository: GitEvents.Repository,
           number: Int
       ): ZIO[
-        Has[SBackend] with system.System with GitAuthenticationService,
+        Has[SBackend] with system.System with Has[Authentication],
         KredikError,
         PullRequest
       ] = ???
@@ -48,14 +42,14 @@ object GithubApiSpec {
           branchName: String
       ): ZIO[Has[
         SBackend
-      ] with system.System with GitAuthenticationService, KredikError, String] =
+      ] with system.System with Has[Authentication], KredikError, String] =
         ???
 
       override def createComment(
           message: String,
           pullRequest: PullRequest
       ): ZIO[
-        Has[SBackend] with system.System with GitAuthenticationService,
+        Has[SBackend] with system.System with Has[Authentication],
         KredikError,
         GithubApi.CommentResponse
       ] = ZIO.succeed(CommentResponse("a", "b", "c"))
