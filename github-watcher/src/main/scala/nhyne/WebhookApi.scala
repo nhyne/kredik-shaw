@@ -6,7 +6,6 @@ import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import nhyne.dependencies.DependencyConverter
 import nhyne.dependencies.DependencyWalker
-import nhyne.prometheus.Metrics.MetricsService
 import nhyne.git.GitEvents.{
   ActionVerb,
   Branch,
@@ -15,21 +14,20 @@ import nhyne.git.GitEvents.{
   Repository,
   WebhookEvent
 }
-import template.RepoConfig
+import template.{RepoConfig, Template}
 import zio.json._
 import zio.logging._
 import zio.config._
 import nhyne.config.ApplicationConfig
 import zio.config.yaml.YamlConfigSource
-import nhyne.template.Template.TemplateService
 import nhyne.git.GitEvents.WebhookEvent._
 import nhyne.git.{Authentication, GitCli, GithubApi}
 import nhyne.git.GithubApi.SBackend
 import nhyne.kubernetes.Kubernetes
-import nhyne.kubernetes.Kubernetes.KubernetesService
 import zio.nio.file.Files
 import zio.nio.core.file.{Path => ZFPath}
 import nhyne.Errors._
+import nhyne.prometheus.Metrics
 import zio.blocking.Blocking
 
 object WebhookApi {
@@ -38,11 +36,11 @@ object WebhookApi {
     with Namespaces
     with Deployments
     with Logging
-    with TemplateService
+    with Has[Template]
     with Has[DependencyConverter]
-    with MetricsService
+    with Has[Metrics]
     with Has[GitCli]
-    with KubernetesService
+    with Has[Kubernetes]
     with Has[DependencyWalker]
     with Has[GithubApi]
     with Has[Authentication]
@@ -193,7 +191,7 @@ object WebhookApi {
       case ActionVerb.Synchronize => synchronizedPullRequest(event.pullRequest)
       case ActionVerb.Closed =>
         ZIO
-          .service[Kubernetes.Service]
+          .service[Kubernetes]
           .flatMap(_.deletePRNamespace(event.pullRequest))
           .mapBoth(k8sError => KredikError.K8sError(k8sError), _ => ())
       case ActionVerb.Unknown(actionType) =>
@@ -280,12 +278,12 @@ object WebhookApi {
               workingDirectory
             )
           )
-      k8sService <- ZIO.service[Kubernetes.Service]
+      k8sService <- ZIO.service[Kubernetes]
       namespace <-
         k8sService
           .createPRNamespace(gitDeployable)
           .mapError(e => KredikError.K8sError(e))
-      templateService <- ZIO.service[template.Template.Service]
+      templateService <- ZIO.service[template.Template]
       _ <- ZIO.foreach_(depsWithPaths) { case (repoConfig, (path, imageTag)) =>
         for {
           _ <- log.info(s"templating $repoConfig with tag: $imageTag")

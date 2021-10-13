@@ -22,6 +22,19 @@ import com.coralogix.zio.k8s.model.apps.v1.Deployment
 import com.coralogix.zio.k8s.model.core.v1.EnvVar
 import nhyne.Errors.KredikError
 
+trait Template {
+  def templateManifests(
+      repoConfig: RepoConfig,
+      repoFolder: Path,
+      namespace: K8sNamespace,
+      imageTag: ImageTag
+  ): ZIO[Blocking, KredikError, Path]
+
+  def injectEnvVarsIntoDeployments(
+      namespace: K8sNamespace,
+      envVars: Map[String, String]
+  ): ZIO[Deployments, K8sFailure, Unit]
+}
 object Template {
 
   sealed trait TemplateCommand
@@ -61,11 +74,9 @@ object Template {
     } yield stdOut
   }
 
-  type TemplateService = Has[Service]
-
-  val live: ULayer[TemplateService] = {
+  val live: ULayer[Has[Template]] = {
     ZLayer.succeed {
-      new Service {
+      new Template {
         override def templateManifests(
             repoConfig: RepoConfig,
             repoFolder: Path,
@@ -137,20 +148,6 @@ object Template {
   private val GIT_REV_SUBSTITUTION = "GIT_HASH"
   private def substituteImage(manifests: String, imageTag: ImageTag) =
     manifests.replace(GIT_REV_SUBSTITUTION, imageTag.value)
-
-  trait Service {
-    def templateManifests(
-        repoConfig: RepoConfig,
-        repoFolder: Path,
-        namespace: K8sNamespace,
-        imageTag: ImageTag
-    ): ZIO[Blocking, KredikError, Path]
-
-    def injectEnvVarsIntoDeployments(
-        namespace: K8sNamespace,
-        envVars: Map[String, String]
-    ): ZIO[Deployments, K8sFailure, Unit]
-  }
 
   def updateDeployEnvVars(
       deploy: Deployment,

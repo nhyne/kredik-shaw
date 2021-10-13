@@ -16,7 +16,7 @@ import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{
 }
 import nhyne.git.GitEvents.{Branch, DeployableGitState, PullRequest}
 import nhyne.prometheus.Metrics
-import nhyne.prometheus.Metrics.MetricsService
+import nhyne.prometheus.Metrics
 import zio.nio.core.file.Path
 import zio.{ExitCode, Has, ZIO, ZLayer}
 import zio.blocking.Blocking
@@ -25,27 +25,25 @@ import zio.process.Command
 import nhyne.Errors.KredikError
 import nhyne.CommandWrapper.commandToKredikExitCode
 
+trait Kubernetes {
+  def applyFile(
+      directory: Path,
+      namespace: K8sNamespace
+  ): ZIO[Blocking, KredikError, ExitCode]
+  def createPRNamespace(
+      pullRequest: DeployableGitState
+  ): ZIO[
+    Namespaces with Has[Metrics] with Logging,
+    K8sFailure,
+    K8sNamespace
+  ]
+  def deletePRNamespace(
+      pullRequest: PullRequest
+  ): ZIO[Logging with Namespaces, K8sFailure, Status]
+}
 object Kubernetes {
 
-  type KubernetesService = Has[Service]
-  trait Service {
-    def applyFile(
-        directory: Path,
-        namespace: K8sNamespace
-    ): ZIO[Blocking, KredikError, ExitCode]
-    def createPRNamespace(
-        pullRequest: DeployableGitState
-    ): ZIO[
-      Namespaces with MetricsService with Logging,
-      K8sFailure,
-      K8sNamespace
-    ]
-    def deletePRNamespace(
-        pullRequest: PullRequest
-    ): ZIO[Logging with Namespaces, K8sFailure, Status]
-  }
-
-  val live = ZLayer.succeed(new Service {
+  val live = ZLayer.succeed(new Kubernetes {
     override def applyFile(
         directory: Path,
         namespace: K8sNamespace
@@ -65,7 +63,7 @@ object Kubernetes {
     override def createPRNamespace(
         pullRequest: DeployableGitState
     ): ZIO[
-      Namespaces with MetricsService with Logging,
+      Namespaces with Has[Metrics] with Logging,
       K8sFailure,
       K8sNamespace
     ] = {
@@ -77,7 +75,7 @@ object Kubernetes {
               case NotFound =>
                 create(prNamespace) *> {
                   ZIO
-                    .service[Metrics.Service]
+                    .service[Metrics]
                     .flatMap(_.namespaceCreated(pullRequest.getBaseFullName))
                     .catchAll { e =>
                       log.error(e.toString).unit
