@@ -1,6 +1,6 @@
 package nhyne.dependencies
 
-import nhyne.dependencies.DependencyConverter.DependencyConverterService
+import nhyne.dependencies.DependencyConverter
 import nhyne.git.GitCli.GitCliService
 import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
@@ -13,7 +13,7 @@ import scala.collection.immutable.Set
 
 object DependencyWalker {
   private type Env = ZEnv
-    with DependencyConverterService
+    with Has[DependencyConverter]
     with GitCliService
     with Logging
 //    with Has[ApplicationConfig]
@@ -76,7 +76,7 @@ object DependencyWalker {
           shouldProcess = !seen.contains(dep)
           maybeNewDependenciesToProcess <-
             if (shouldProcess)
-              ZIO.service[DependencyConverter.Service].flatMap { depService =>
+              ZIO.service[DependencyConverter].flatMap { depService =>
                 depService.dependencyToRepoConfig(dep, workingDir).flatMap {
                   case (rc, path) =>
                     processedConfigsRef.get.flatMap { processedConfigs =>

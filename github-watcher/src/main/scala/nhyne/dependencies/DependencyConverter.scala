@@ -12,25 +12,22 @@ import nhyne.git.GitCli.GitCliService
 import zio.logging.{Logging, log}
 import nhyne.Errors.KredikError
 
+trait DependencyConverter {
+
+  // TODO: This should return a managed Path
+  def dependencyToRepoConfig(
+                              dependency: Dependency,
+                              workingDir: Path
+                            ): ZIO[
+    ZEnv with GitCliService with Logging,
+    KredikError,
+    (RepoConfig, Path)
+  ]
+}
+
 object DependencyConverter {
   private val watcherConfFile = ".watcher.yaml"
   private val watcherConfFileShort = ".watcher.yml"
-
-  private type Env = ZEnv with GitCliService with Logging
-
-  type DependencyConverterService = Has[Service]
-  trait Service {
-    // TODO: This should return a managed Path
-    def dependencyToRepoConfig(
-        dependency: Dependency,
-        workingDir: Path
-    ): ZIO[
-      Env,
-      KredikError,
-      (RepoConfig, Path)
-    ]
-  }
-
   private def readConfig(repoDir: Path, dependency: Dependency) =
     for {
 
@@ -61,12 +58,12 @@ object DependencyConverter {
     } yield config
 
   val live = ZLayer.succeed(
-    new Service {
+    new DependencyConverter {
       override def dependencyToRepoConfig(
           dependency: Dependency,
           workingDir: Path
       ): ZIO[
-        Env,
+        ZEnv with GitCliService with Logging,
         KredikError,
         (RepoConfig, Path)
       ] = {
