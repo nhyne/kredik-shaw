@@ -27,6 +27,7 @@ trait Template {
       repoConfig: RepoConfig,
       repoFolder: Path,
       namespace: K8sNamespace,
+      environmentVars: Map[String, String],
       imageTag: ImageTag
   ): ZIO[Blocking, KredikError, Path]
 
@@ -56,7 +57,8 @@ object Template {
 
   def template(
       dir: Path,
-      config: RepoConfig
+      config: RepoConfig,
+      envVars: Map[String, String]
   ): ZIO[Blocking, KredikError, String] = {
     for {
       path <-
@@ -70,7 +72,7 @@ object Template {
           kustomizeCommand(path)
         case TemplateCommand.KustomizeHelm => kustomizeHelmCommand(path)
       }
-      stdOut <- commandToKredikString(templateCommand)
+      stdOut <- commandToKredikString(templateCommand.env(envVars))
     } yield stdOut
   }
 
@@ -81,10 +83,11 @@ object Template {
             repoConfig: RepoConfig,
             repoFolder: Path,
             namespace: K8sNamespace,
+            environmentVars: Map[String, String],
             imageTag: ImageTag
         ): ZIO[Blocking, KredikError, Path] = {
           for {
-            templateOutput <- template(repoFolder, repoConfig)
+            templateOutput <- template(repoFolder, repoConfig, environmentVars)
               .map(
                 substituteNamespace(_, namespace.value)
               )

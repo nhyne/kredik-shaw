@@ -6,14 +6,7 @@ import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import nhyne.dependencies.DependencyConverter
 import nhyne.dependencies.DependencyWalker
-import nhyne.git.GitEvents.{
-  ActionVerb,
-  Branch,
-  DeployableGitState,
-  PullRequest,
-  Repository,
-  WebhookEvent
-}
+import nhyne.git.GitEvents.{ActionVerb, Branch, DeployableGitState, PullRequest, Repository, WebhookEvent}
 import template.{RepoConfig, Template}
 import zio.json._
 import zio.logging._
@@ -28,6 +21,7 @@ import zio.nio.file.Files
 import zio.nio.core.file.{Path => ZFPath}
 import nhyne.Errors._
 import nhyne.prometheus.Metrics
+import nhyne.template.RepoConfig.ImageTag
 import zio.blocking.Blocking
 
 object WebhookApi {
@@ -283,6 +277,10 @@ object WebhookApi {
         k8sService
           .createPRNamespace(gitDeployable)
           .mapError(e => KredikError.K8sError(e))
+      envVars = Map(
+          "PR_ENVIRONMENT" -> "TRUE",
+          "IMAGE_TAG" -> "1.7.6"
+        )
       templateService <- ZIO.service[template.Template]
       _ <- ZIO.foreach_(depsWithPaths) { case (repoConfig, (path, imageTag)) =>
         for {
@@ -291,6 +289,7 @@ object WebhookApi {
             repoConfig,
             path,
             namespace,
+            envVars,
             imageTag
           )
           exitCode <-
@@ -302,7 +301,7 @@ object WebhookApi {
         templateService
           .injectEnvVarsIntoDeployments(
             namespace,
-            Map("PR_ENVIRONMENT" -> "TRUE")
+            envVars
           )
           .tapError(e => log.error(e.toString))
           .mapError(KredikError.K8sError)
