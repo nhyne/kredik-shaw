@@ -59,5 +59,9 @@ object Errors {
       def toThrowable(): Throwable = cause
     }
 
+    case object InvalidSignature extends KredikError {
+      val toThrowable: Throwable = new Throwable("InvalidSignature")
+    }
+
   }
 }

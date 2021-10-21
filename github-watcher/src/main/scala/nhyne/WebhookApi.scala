@@ -6,7 +6,14 @@ import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import nhyne.dependencies.DependencyConverter
 import nhyne.dependencies.DependencyWalker
-import nhyne.git.GitEvents.{ActionVerb, Branch, DeployableGitState, PullRequest, Repository, WebhookEvent}
+import nhyne.git.GitEvents.{
+  ActionVerb,
+  Branch,
+  DeployableGitState,
+  PullRequest,
+  Repository,
+  WebhookEvent
+}
 import template.{RepoConfig, Template}
 import zio.json._
 import zio.logging._
@@ -23,6 +30,9 @@ import nhyne.Errors._
 import nhyne.prometheus.Metrics
 import nhyne.template.RepoConfig.ImageTag
 import zio.blocking.Blocking
+
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 object WebhookApi {
 
@@ -65,62 +75,92 @@ object WebhookApi {
     ZIO.service[ApplicationConfig].map(_.port).flatMap { port =>
       ZIO.succeed(
         Server.port(port) ++ Server.app(apiServer) ++ Server.maxRequestSize(
-          // This is currently arbitrary. Would like to switch to streams/chunks
+          // TODO: This is currently arbitrary. Would like to switch to streams/chunks
           100 * 1024
         )
       )
     }
   }
 
+  private def getSecretHeader(request: Request): Option[Boolean] = {
+    request
+      .getHeader("X-Hub-Signature-256")
+      .map { h =>
+        // TODO: Read this secret from somewhere or have it be pulled in from environment
+        val secret = new SecretKeySpec("something".getBytes("UTF-8"), "SHA256")
+        val mac = Mac.getInstance("HMACSHA256")
+        mac.init(secret)
+        val hashString: Array[Byte] =
+          mac.doFinal(request.getBodyAsString.get.getBytes("UTF-8"))
+        val macOne = hashString.map("%02x".format(_)).mkString
+
+        // TODO: This is a security issue. A timing attack is possible, should switch to a constant time equal check
+        val eq = s"sha256=$macOne" == h.value
+        println(eq)
+        eq
+      }
+  }
+
+  // TODO: Clean this method up
   private def githubWebhookPost(
       request: Request
-  ): ZIO[ServerEnv, KredikError, String] =
-    request.getBodyAsString match {
-      case Some(body) => {
-        val bodyType: Either[String, WebhookEvent] =
-          body
-            .fromJson[PullRequestEvent]
-            .orElse(body.fromJson[IssueCommentEvent])
-            .orElse(
-              body.fromJson[LabeledEvent]
-            ) // see comment around Webhook event trait
-        for {
-          webhookEvent <-
-            ZIO.fromEither(bodyType).mapError(KredikError.GeneralError(_))
-          _ <- webhookEvent match {
-            case pullRequestEvent: WebhookEvent.PullRequestEvent =>
-              pullRequestAction(pullRequestEvent)
-                .tapError(thrown =>
-                  for {
-                    _ <- log.error(
-                      s"failed to process PR event: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number}: $thrown"
-                    )
-                    _ <-
-                      ZIO
-                        .service[GithubApi]
-                        .flatMap(
-                          _.createComment(
-                            thrown.toString,
-                            pullRequestEvent.pullRequest
+  ): ZIO[ServerEnv, KredikError, String] = {
+    getSecretHeader(request)
+      .map { valid =>
+        if (valid) {
+          request.getBodyAsString match {
+            case Some(body) => {
+              val bodyType: Either[String, WebhookEvent] =
+                body
+                  .fromJson[PullRequestEvent]
+                  .orElse(body.fromJson[IssueCommentEvent])
+                  .orElse(
+                    body.fromJson[LabeledEvent]
+                  ) // see comment around Webhook event trait
+              for {
+                webhookEvent <-
+                  ZIO.fromEither(bodyType).mapError(KredikError.GeneralError(_))
+                _ <- webhookEvent match {
+                  case pullRequestEvent: WebhookEvent.PullRequestEvent =>
+                    pullRequestAction(pullRequestEvent)
+                      .tapError(thrown =>
+                        for {
+                          _ <- log.error(
+                            s"failed to process PR event: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number}: $thrown"
                           )
-                        )
-                        .tapError(e =>
-                          log.error(
-                            s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number} due to: \n $e"
-                          )
-                        )
-                  } yield ()
-                )
-                .forkDaemon // Forking once we have a valid body
-            case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
-              commentAction(issueCommentEvent).forkDaemon
-            case _ => ??? // TODO: Add label event logic -- do we need it?
+                          _ <-
+                            ZIO
+                              .service[GithubApi]
+                              .flatMap(
+                                _.createComment(
+                                  thrown.toString,
+                                  pullRequestEvent.pullRequest
+                                )
+                              )
+                              .tapError(e =>
+                                log.error(
+                                  s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number} due to: \n $e"
+                                )
+                              )
+                        } yield ()
+                      )
+                      .forkDaemon // Forking once we have a valid body
+                  case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
+                    commentAction(issueCommentEvent).forkDaemon
+                  case _ => ??? // TODO: Add label event logic -- do we need it?
+                }
+              } yield "OK"
+            }
+
+            case None =>
+              ZIO.fail(
+                KredikError.GeneralError("did not receive a request body")
+              )
           }
-        } yield "OK"
+        } else ZIO.fail(KredikError.InvalidSignature)
       }
-      case None =>
-        ZIO.fail(KredikError.GeneralError("did not receive a request body"))
-    }
+      .getOrElse(ZIO.fail(KredikError.InvalidSignature))
+  }
 
   // TODO: Need full functionality: delete, sync
   // TODO: This should NOT forkDaemon
@@ -139,12 +179,13 @@ object WebhookApi {
       branch = Branch(branchName, gitBranchSha, repository)
       _ <- createTempFoldersAndProcess(
         branch,
-        { case (repoDirectory, git) =>
-          git.gitClone(
-            repository,
-            branch,
-            repoDirectory
-          )
+        {
+          case (repoDirectory, git) =>
+            git.gitClone(
+              repository,
+              branch,
+              repoDirectory
+            )
         }
       )
 
@@ -175,6 +216,28 @@ object WebhookApi {
           .tapError(err => log.error(err.toString))
       _ <- openedPullRequest(pr)
     } yield ()).when(comment.getBody() == "rebuild")
+  }
+
+  sealed trait CommentAction
+
+  object CommentAction {
+    case object Rebuild extends CommentAction
+    final case class Build(imageTag: ImageTag) extends CommentAction
+    case object Destroy extends CommentAction
+    final case class Unknown(commentBody: String) extends CommentAction
+
+    def apply(commentBody: String): Option[CommentAction] = {
+      if (commentBody.take(6) == "kredik")
+        commentBody.drop(6).split(" ").toList match {
+          case Nil                           => None
+          case "build" :: imageTag :: _      => Some(Build(ImageTag(imageTag)))
+          case "rebuild" :: _ | "build" :: _ => Some(Rebuild)
+          case "destroy" :: _                => Some(Destroy)
+          case _                             => Some(Unknown(commentBody))
+        }
+      else None
+    }
+
   }
 
   private def pullRequestAction(
@@ -243,11 +306,12 @@ object WebhookApi {
   ): ZIO[ServerEnv, KredikError, Unit] = {
     createTempFoldersAndProcess(
       pullRequest,
-      { case (repoDirectory, git) =>
-        git.gitCloneAndMerge(
-          pullRequest,
-          repoDirectory
-        )
+      {
+        case (repoDirectory, git) =>
+          git.gitCloneAndMerge(
+            pullRequest,
+            repoDirectory
+          )
       }
     )
   }
@@ -278,24 +342,25 @@ object WebhookApi {
           .createPRNamespace(gitDeployable)
           .mapError(e => KredikError.K8sError(e))
       envVars = Map(
-          "PR_ENVIRONMENT" -> "TRUE",
-          "IMAGE_TAG" -> "1.7.6"
-        )
+        "PR_ENVIRONMENT" -> "TRUE",
+        "IMAGE_TAG" -> "1.7.6"
+      )
       templateService <- ZIO.service[template.Template]
-      _ <- ZIO.foreach_(depsWithPaths) { case (repoConfig, (path, imageTag)) =>
-        for {
-          _ <- log.info(s"templating $repoConfig with tag: $imageTag")
-          templatedManifests <- templateService.templateManifests(
-            repoConfig,
-            path,
-            namespace,
-            envVars,
-            imageTag
-          )
-          exitCode <-
-            k8sService
-              .applyFile(templatedManifests, namespace)
-        } yield repoConfig -> exitCode
+      _ <- ZIO.foreach_(depsWithPaths) {
+        case (repoConfig, (path, imageTag)) =>
+          for {
+            _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+            templatedManifests <- templateService.templateManifests(
+              repoConfig,
+              path,
+              namespace,
+              envVars,
+              imageTag
+            )
+            exitCode <-
+              k8sService
+                .applyFile(templatedManifests, namespace)
+          } yield repoConfig -> exitCode
       }
       _ <-
         templateService
