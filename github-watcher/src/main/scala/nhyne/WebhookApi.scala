@@ -196,32 +196,33 @@ object WebhookApi {
     comment: IssueCommentEvent
   ): ZIO[ServerEnv, KredikError, Unit] =
     for {
-      pr           <- ZIO
-                        .service[GithubApi]
-                        .flatMap(
-                          _.getPullRequest(comment.repository, comment.issue.prNumber)
-                        )
-                        .tapError(err => log.error(err.toString))
-      commentAction = CommentAction(comment.getBody()).map {
-                        case CommentAction.Rebuild              => synchronizedPullRequest(pr)
-                        case CommentAction.Build(imageTag)      =>
-                          ZIO.fail(
-                            KredikError.GeneralError(
-                              s"unimplemented comment command: build $imageTag"
-                            )
-                          )
-                        case CommentAction.Destroy              =>
-                          ZIO
-                            .service[Kubernetes]
-                            .flatMap(_.deletePRNamespace(pr))
-                            .mapError(KredikError.K8sError)
-                        case CommentAction.Unknown(commentBody) =>
-                          ZIO.fail(
-                            KredikError.GeneralError(s"invalid comment action: $commentBody")
-                          )
-                      }
-                        .getOrElse(ZIO.unit)
-      _            <- commentAction
+      commentPrefix <- ZIO.service[ApplicationConfig].map(_.commentPrefix)
+      pr            <- ZIO
+                         .service[GithubApi]
+                         .flatMap(
+                           _.getPullRequest(comment.repository, comment.issue.prNumber)
+                         )
+                         .tapError(err => log.error(err.toString))
+      commentAction  = CommentAction(comment.getBody(), commentPrefix).map {
+                         case CommentAction.Rebuild              => synchronizedPullRequest(pr)
+                         case CommentAction.Build(imageTag)      =>
+                           ZIO.fail(
+                             KredikError.GeneralError(
+                               s"unimplemented comment command: build $imageTag"
+                             )
+                           )
+                         case CommentAction.Destroy              =>
+                           ZIO
+                             .service[Kubernetes]
+                             .flatMap(_.deletePRNamespace(pr))
+                             .mapError(KredikError.K8sError)
+                         case CommentAction.Unknown(commentBody) =>
+                           ZIO.fail(
+                             KredikError.GeneralError(s"invalid comment action: $commentBody")
+                           )
+                       }
+                         .getOrElse(ZIO.unit)
+      _             <- commentAction
     } yield ()
 
   sealed trait CommentAction
@@ -235,10 +236,10 @@ object WebhookApi {
 
     final case class Unknown(commentBody: String) extends CommentAction
 
-    def apply(commentBody: String): Option[CommentAction] =
+    def apply(commentBody: String, prefix: String): Option[CommentAction] =
       // TODO: make comment prefix configurable
-      if (commentBody.take(6) == "kredik")
-        commentBody.drop(7).split(" ").toList match {
+      if (commentBody.startsWith(prefix))
+        commentBody.drop(prefix.length + 1).split(" ").toList match {
           case Nil                           => None
           case "build" :: imageTag :: _      => Some(Build(ImageTag(imageTag)))
           case "rebuild" :: _ | "build" :: _ => Some(Rebuild)

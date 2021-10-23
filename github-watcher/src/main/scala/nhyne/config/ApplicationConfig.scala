@@ -12,7 +12,8 @@ object ApplicationConfig {
       9090,
       List("nhyne"),
       SecretsConfig.SecretsEnvConfig("GITHUB_WEBHOOK"),
-      ".watcher.yaml"
+      ".watcher.yaml",
+      "kredik"
     )
   )
 }
@@ -23,7 +24,8 @@ final case class ApplicationConfig(
   prometheusPort: Int,
   organizations: List[String],
   webhookSecrets: SecretsConfig,
-  configFileName: String
+  configFileName: String,
+  commentPrefix: String
 )
 
 sealed trait SecretsConfig {
