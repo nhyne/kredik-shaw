@@ -1,7 +1,7 @@
 package nhyne.kubernetes
 
 import com.coralogix.zio.k8s.client.model.{ K8sNamespace, PropagationPolicy }
-import com.coralogix.zio.k8s.client.{ K8sFailure, NotFound }
+import com.coralogix.zio.k8s.client.{ DeserializationFailure, K8sFailure, NotFound }
 import com.coralogix.zio.k8s.client.v1.namespaces.{ create, delete, get, Namespaces }
 import com.coralogix.zio.k8s.model.core.v1.Namespace
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{ DeleteOptions, ObjectMeta, Status }
@@ -92,7 +92,7 @@ object Kubernetes {
         propagationPolicy = Some(PropagationPolicy.Background)
       ).foldM(
         {
-          case NotFound =>
+          case NotFound                          =>
             log
               .warn(
                 s"attempting to delete namespace: $nsName that does not exist"
@@ -100,8 +100,14 @@ object Kubernetes {
               .as(
                 Status(code = 200, message = s"namespace $nsName did not exist")
               )
-          case f        =>
-            log.warn(s"failed to delete ns: $nsName with error: $f") *> ZIO
+          case dsFailure: DeserializationFailure =>
+            log
+              .warn(s"deserialization error from k8s master on: $nsName ns deletion ${dsFailure.error}")
+              .as(
+                Status(code = 200, message = s"namespace $nsName deleted")
+              )
+          case f                                 =>
+            log.error(s"failed to delete ns: $nsName with error: $f") *> ZIO
               .fail(
                 f
               )

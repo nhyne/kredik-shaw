@@ -8,7 +8,9 @@ object GitEvents {
   //   issue with this is that there is nothing to disambiguate the json bodies other than the bodies themselves
   //  implicit val webhookEventDecoder: JsonDecoder[WebhookEvent] = DeriveJsonDecoder.gen[WebhookEvent]
 
-  sealed trait WebhookEvent
+  sealed trait WebhookEvent {
+    def baseRepo(): Repository
+  }
 
   object WebhookEvent {
 
@@ -18,17 +20,17 @@ object GitEvents {
       repository: Repository,
       issue: Issue
     ) extends WebhookEvent {
-      def getBody() = comment.body
+      def getBody()  = comment.body
+      def baseRepo() = repository
     }
 
     final case class PullRequestEvent(
       action: ActionVerb,
       number: Int,
       @jsonField("pull_request") pullRequest: PullRequest
-    ) extends WebhookEvent
-
-    final case class LabeledEvent(action: ActionVerb, label: Label) extends WebhookEvent
-
+    ) extends WebhookEvent {
+      def baseRepo() = pullRequest.base.repo
+    }
   }
 
   sealed trait DeployableGitState {
@@ -141,8 +143,6 @@ object GitEvents {
   implicit val issueCommentDecoder: JsonDecoder[WebhookEvent.IssueCommentEvent]    =
     DeriveJsonDecoder.gen[WebhookEvent.IssueCommentEvent]
 
-  implicit val labelDecoder: JsonDecoder[Label]                          = DeriveJsonDecoder.gen[Label]
-  implicit val labelEventDecoder: JsonDecoder[WebhookEvent.LabeledEvent] =
-    DeriveJsonDecoder.gen[WebhookEvent.LabeledEvent]
+  implicit val labelDecoder: JsonDecoder[Label] = DeriveJsonDecoder.gen[Label]
 
 }

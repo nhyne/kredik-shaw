@@ -8,7 +8,7 @@ import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import io.github.vigoo.zioaws.secretsmanager.SecretsManager
 import nhyne.dependencies.DependencyConverter
 import nhyne.dependencies.DependencyWalker
-import nhyne.git.GitEvents.{ ActionVerb, Branch, DeployableGitState, PullRequest, Repository, WebhookEvent }
+import nhyne.git.GitEvents.{ Branch, DeployableGitState, PullRequest, Repository, WebhookEvent }
 import template.{ RepoConfig, Template }
 import zio.json._
 import zio.logging._
@@ -82,7 +82,7 @@ object WebhookApi {
   private def githubWebhookPost(
     request: Request
   ): ZIO[ServerEnv, KredikError, String] = {
-    def getSecretHeader(
+    def validateSecretHeader(
       repository: Repository
     ): ZIO[ServerEnv, KredikError, Unit] =
       for {
@@ -116,54 +116,35 @@ object WebhookApi {
         val bodyType: Either[String, WebhookEvent] =
           body
             .fromJson[PullRequestEvent]
-            .orElse(body.fromJson[IssueCommentEvent])
-            .orElse(
-              body.fromJson[LabeledEvent]
-            ) // see comment around Webhook event trait
+            .orElse(body.fromJson[IssueCommentEvent]) // see comment around Webhook event trait
         for {
-          webhookEvent <- ZIO.fromEither(bodyType).mapError(KredikError.GeneralError(_))
-          _            <- webhookEvent match {
-                            case pullRequestEvent: WebhookEvent.PullRequestEvent   =>
-                              for {
 
-                                _ <- getSecretHeader(pullRequestEvent.pullRequest.base.repo)
-                                _ <-
-                                  pullRequestAction(pullRequestEvent)
-                                    .tapError(thrown =>
-                                      for {
-                                        _ <-
-                                          log.error(
-                                            s"failed to process PR event: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number}: $thrown"
-                                          )
-                                        _ <-
-                                          ZIO
-                                            .service[GithubApi]
-                                            .flatMap(
-                                              _.createComment(
-                                                thrown.toString,
-                                                pullRequestEvent.pullRequest
-                                              )
-                                            )
-                                            .tapError(e =>
-                                              log.error(
-                                                s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number} due to: \n $e"
-                                              )
-                                            )
-                                      } yield ()
-                                    )
-                                    .forkDaemon // Forking once we have a valid body
-                              } yield ()
+          webhookEvent <- ZIO.fromEither(bodyType).mapError(KredikError.GeneralError(_))
+          _            <- validateSecretHeader(webhookEvent.baseRepo()).tapError(e => log.error(s"invalid secret sha256: $e"))
+          _            <- webhookEvent match {
+                            case _: WebhookEvent.PullRequestEvent                  => ZIO.unit
                             case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
                               commentAction(issueCommentEvent)
                                 .tapError(thrown =>
-                                  // TODO: Need to comment the error back
-                                  log.error(
-                                    s"failed to process comment: ${issueCommentEvent.repository.fullName} ${issueCommentEvent
-                                      .getBody()}: $thrown"
-                                  )
+                                  for {
+
+                                    ghApi <- ZIO.service[GithubApi]
+                                    _     <-
+                                      log.error(
+                                        s"failed to process comment on ${issueCommentEvent.repository.fullName}: `${issueCommentEvent
+                                          .getBody()}`: $thrown"
+                                      )
+                                    pr    <- ghApi
+                                               .getPullRequest(issueCommentEvent.repository, issueCommentEvent.issue.prNumber)
+                                               .tapError(err => log.error(err.toString))
+                                    _     <- ghApi
+                                               .createComment(thrown.toThrowable().toString, pr)
+                                               .tapError(e => log.error(s"could not comment on pull request: $e"))
+
+                                  } yield ()
+                                // TODO: Need to comment the error back
                                 )
                                 .forkDaemon
-                            case _                                                 => ??? // TODO: Add label event logic -- do we need it?
                           }
         } yield "OK"
 
@@ -240,7 +221,6 @@ object WebhookApi {
                           )
                       }
                         .getOrElse(ZIO.unit)
-      _            <- log.info(s"doing action: ${CommentAction(comment.getBody())}")
       _            <- commentAction
     } yield ()
 
@@ -268,27 +248,6 @@ object WebhookApi {
       else None
 
   }
-
-  private def pullRequestAction(
-    event: PullRequestEvent
-  ): ZIO[ServerEnv, KredikError, Unit] =
-    event.action match {
-      case ActionVerb.Opened              => openedPullRequest(event.pullRequest)
-      case ActionVerb.Synchronize         => synchronizedPullRequest(event.pullRequest)
-      case ActionVerb.Closed              =>
-        ZIO
-          .service[Kubernetes]
-          .flatMap(_.deletePRNamespace(event.pullRequest))
-          .mapBoth(k8sError => KredikError.K8sError(k8sError), _ => ())
-      case ActionVerb.Unknown(actionType) =>
-        log.warn(
-          s"got unknown action type: $actionType from repo: ${event.pullRequest.head.repo} pull request number: ${event.pullRequest.number}"
-        ) *> ZIO.fail(
-          KredikError.GeneralError(s"unknown action type: $actionType")
-        )
-      case ActionVerb.Created             =>
-        log.warn("got invalid verb {Created} verb for Pull Request")
-    }
 
   private def synchronizedPullRequest(
     pullRequest: PullRequest
