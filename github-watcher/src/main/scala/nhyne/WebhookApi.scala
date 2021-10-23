@@ -242,7 +242,6 @@ object WebhookApi {
     final case class Unknown(commentBody: String) extends CommentAction
 
     def apply(commentBody: String, prefix: String): Option[CommentAction] =
-      // TODO: make comment prefix configurable
       if (commentBody.startsWith(prefix))
         commentBody.drop(prefix.length + 1).split(" ").toList match {
           case Nil                           => None
