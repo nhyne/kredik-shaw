@@ -1,6 +1,7 @@
 package nhyne.dependencies
 
 import nhyne.Errors.KredikError
+import nhyne.config.ApplicationConfig
 import nhyne.git.GitCliSpec
 import nhyne.template.{Dependency, RepoConfig}
 import nhyne.template.RepoConfig.ImageTag
@@ -58,7 +59,8 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
           .injectSome(
             DependencyConverter.live,
             Logging.console(),
-            GitCliSpec.test
+            GitCliSpec.test,
+            ApplicationConfig.test
           )
       }
     )
@@ -101,7 +103,9 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
         override def dependencyToRepoConfig(
             dependency: Dependency,
             workingDir: Path
-        ): ZIO[Blocking with Random, KredikError, (RepoConfig, Path)] =
+        ): ZIO[Blocking with Random with Has[
+          ApplicationConfig
+        ], KredikError, (RepoConfig, Path)] =
           ZIO
             .fromOption(testMap.get(dependency.owner))
             .orElseFail {

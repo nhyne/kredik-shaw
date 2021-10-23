@@ -1,9 +1,11 @@
 package nhyne
+
 import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
 import zhttp.service._
 import zhttp.http._
 import zio._
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
+import io.github.vigoo.zioaws.secretsmanager.SecretsManager
 import nhyne.dependencies.DependencyConverter
 import nhyne.dependencies.DependencyWalker
 import nhyne.git.GitEvents.{
@@ -28,6 +30,7 @@ import zio.nio.file.Files
 import zio.nio.core.file.{Path => ZFPath}
 import nhyne.Errors._
 import nhyne.prometheus.Metrics
+import nhyne.secrets.Secrets
 import nhyne.template.RepoConfig.ImageTag
 import zio.blocking.Blocking
 
@@ -48,8 +51,10 @@ object WebhookApi {
     with Has[DependencyWalker]
     with Has[GithubApi]
     with Has[Authentication]
+    with Has[Secrets]
     with Has[SBackend]
     with Has[ApplicationConfig]
+    with SecretsManager
 
   private val apiRoot = Root / "api" / "webhook"
 
@@ -68,6 +73,8 @@ object WebhookApi {
             HttpError.InternalServerError(cause = Some(cause.toThrowable())),
           _ => Response.text("OK")
         )
+      case Method.GET -> Root / "health" => ZIO.succeed(Response.text("OK"))
+      case Method.GET -> Root / "live"   => ZIO.succeed(Response.text("OK"))
     }
 
   def server()
@@ -82,84 +89,94 @@ object WebhookApi {
     }
   }
 
-  private def getSecretHeader(request: Request): Option[Boolean] = {
-    request
-      .getHeader("X-Hub-Signature-256")
-      .map { h =>
-        // TODO: Read this secret from somewhere or have it be pulled in from environment
-        val secret = new SecretKeySpec("something".getBytes("UTF-8"), "SHA256")
-        val mac = Mac.getInstance("HMACSHA256")
-        mac.init(secret)
-        val hashString: Array[Byte] =
-          mac.doFinal(request.getBodyAsString.get.getBytes("UTF-8"))
-        val macOne = hashString.map("%02x".format(_)).mkString
-
-        // TODO: This is a security issue. A timing attack is possible, should switch to a constant time equal check
-        val eq = s"sha256=$macOne" == h.value
-        println(eq)
-        eq
-      }
-  }
-
   // TODO: Clean this method up
   private def githubWebhookPost(
       request: Request
   ): ZIO[ServerEnv, KredikError, String] = {
-    getSecretHeader(request)
-      .map { valid =>
-        if (valid) {
-          request.getBodyAsString match {
-            case Some(body) => {
-              val bodyType: Either[String, WebhookEvent] =
-                body
-                  .fromJson[PullRequestEvent]
-                  .orElse(body.fromJson[IssueCommentEvent])
-                  .orElse(
-                    body.fromJson[LabeledEvent]
-                  ) // see comment around Webhook event trait
-              for {
-                webhookEvent <-
-                  ZIO.fromEither(bodyType).mapError(KredikError.GeneralError(_))
-                _ <- webhookEvent match {
-                  case pullRequestEvent: WebhookEvent.PullRequestEvent =>
-                    pullRequestAction(pullRequestEvent)
-                      .tapError(thrown =>
-                        for {
-                          _ <- log.error(
-                            s"failed to process PR event: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number}: $thrown"
-                          )
-                          _ <-
-                            ZIO
-                              .service[GithubApi]
-                              .flatMap(
-                                _.createComment(
-                                  thrown.toString,
-                                  pullRequestEvent.pullRequest
-                                )
-                              )
-                              .tapError(e =>
-                                log.error(
-                                  s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number} due to: \n $e"
-                                )
-                              )
-                        } yield ()
-                      )
-                      .forkDaemon // Forking once we have a valid body
-                  case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
-                    commentAction(issueCommentEvent).forkDaemon
-                  case _ => ??? // TODO: Add label event logic -- do we need it?
-                }
-              } yield "OK"
-            }
+    def getSecretHeader(
+        repository: Repository
+    ): ZIO[ServerEnv, KredikError, Unit] = {
+      for {
+        secretString <- ZIO.service[Secrets].flatMap(_.readSecret(repository))
+        correctSha <-
+          ZIO
+            .fromOption(
+              request
+                .getHeader("X-Hub-Signature-256")
+                .map { h =>
+                  val secret =
+                    new SecretKeySpec(secretString.getBytes("UTF-8"), "SHA256")
+                  val mac = Mac.getInstance("HMACSHA256")
+                  mac.init(secret)
+                  val hashString: Array[Byte] =
+                    mac.doFinal(request.getBodyAsString.get.getBytes("UTF-8"))
+                  val macOne = hashString.map("%02x".format(_)).mkString
 
-            case None =>
-              ZIO.fail(
-                KredikError.GeneralError("did not receive a request body")
-              )
+                  // TODO: This is a security issue. A timing attack is possible, should switch to a constant time equal check
+                  val correctSha = s"sha256=$macOne" == h.value
+
+                  ZIO.fail(KredikError.InvalidSignature).unless(correctSha)
+
+                }
+            )
+            .orElseFail(KredikError.GeneralError("missing sha256 header"))
+        _ <- correctSha
+      } yield ()
+    }
+
+    request.getBodyAsString match {
+      case Some(body) => {
+        val bodyType: Either[String, WebhookEvent] =
+          body
+            .fromJson[PullRequestEvent]
+            .orElse(body.fromJson[IssueCommentEvent])
+            .orElse(
+              body.fromJson[LabeledEvent]
+            ) // see comment around Webhook event trait
+        for {
+          webhookEvent <-
+            ZIO.fromEither(bodyType).mapError(KredikError.GeneralError(_))
+          _ <- webhookEvent match {
+            case pullRequestEvent: WebhookEvent.PullRequestEvent =>
+              for {
+
+                _ <- getSecretHeader(pullRequestEvent.pullRequest.base.repo)
+                _ <- pullRequestAction(pullRequestEvent)
+                  .tapError(thrown =>
+                    for {
+                      _ <- log.error(
+                        s"failed to process PR event: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number}: $thrown"
+                      )
+                      _ <-
+                        ZIO
+                          .service[GithubApi]
+                          .flatMap(
+                            _.createComment(
+                              thrown.toString,
+                              pullRequestEvent.pullRequest
+                            )
+                          )
+                          .tapError(e =>
+                            log.error(
+                              s"could not post comment on Pull Request: ${pullRequestEvent.pullRequest.getBaseFullName}#${pullRequestEvent.pullRequest.number} due to: \n $e"
+                            )
+                          )
+                    } yield ()
+                  )
+                  .forkDaemon // Forking once we have a valid body
+              } yield ()
+            case issueCommentEvent: WebhookEvent.IssueCommentEvent =>
+              commentAction(issueCommentEvent).forkDaemon
+            case _ => ??? // TODO: Add label event logic -- do we need it?
           }
-        } else ZIO.fail(KredikError.InvalidSignature)
+        } yield "OK"
       }
-      .getOrElse(ZIO.fail(KredikError.InvalidSignature))
+
+      case None =>
+        ZIO.fail(
+          KredikError.GeneralError("did not receive a request body")
+        )
+    }
   }
 
   // TODO: Need full functionality: delete, sync
@@ -179,13 +196,12 @@ object WebhookApi {
       branch = Branch(branchName, gitBranchSha, repository)
       _ <- createTempFoldersAndProcess(
         branch,
-        {
-          case (repoDirectory, git) =>
-            git.gitClone(
-              repository,
-              branch,
-              repoDirectory
-            )
+        { case (repoDirectory, git) =>
+          git.gitClone(
+            repository,
+            branch,
+            repoDirectory
+          )
         }
       )
 
@@ -222,8 +238,11 @@ object WebhookApi {
 
   object CommentAction {
     case object Rebuild extends CommentAction
+
     final case class Build(imageTag: ImageTag) extends CommentAction
+
     case object Destroy extends CommentAction
+
     final case class Unknown(commentBody: String) extends CommentAction
 
     def apply(commentBody: String): Option[CommentAction] = {
@@ -306,12 +325,11 @@ object WebhookApi {
   ): ZIO[ServerEnv, KredikError, Unit] = {
     createTempFoldersAndProcess(
       pullRequest,
-      {
-        case (repoDirectory, git) =>
-          git.gitCloneAndMerge(
-            pullRequest,
-            repoDirectory
-          )
+      { case (repoDirectory, git) =>
+        git.gitCloneAndMerge(
+          pullRequest,
+          repoDirectory
+        )
       }
     )
   }
@@ -346,21 +364,20 @@ object WebhookApi {
         "IMAGE_TAG" -> "1.7.6"
       )
       templateService <- ZIO.service[template.Template]
-      _ <- ZIO.foreach_(depsWithPaths) {
-        case (repoConfig, (path, imageTag)) =>
-          for {
-            _ <- log.info(s"templating $repoConfig with tag: $imageTag")
-            templatedManifests <- templateService.templateManifests(
-              repoConfig,
-              path,
-              namespace,
-              envVars,
-              imageTag
-            )
-            exitCode <-
-              k8sService
-                .applyFile(templatedManifests, namespace)
-          } yield repoConfig -> exitCode
+      _ <- ZIO.foreach_(depsWithPaths) { case (repoConfig, (path, imageTag)) =>
+        for {
+          _ <- log.info(s"templating $repoConfig with tag: $imageTag")
+          templatedManifests <- templateService.templateManifests(
+            repoConfig,
+            path,
+            namespace,
+            envVars,
+            imageTag
+          )
+          exitCode <-
+            k8sService
+              .applyFile(templatedManifests, namespace)
+        } yield repoConfig -> exitCode
       }
       _ <-
         templateService

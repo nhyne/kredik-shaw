@@ -25,6 +25,9 @@ import zio.metrics.prometheus.helpers.{
   http,
   initializeDefaultExports
 }
+import io.github.vigoo.zioaws.core.config
+import io.github.vigoo.zioaws.netty
+import io.github.vigoo.zioaws.secretsmanager
 
 object Main extends App {
 
@@ -44,7 +47,7 @@ object Main extends App {
       // TODO: The from file should be okay to fail since we're pulling config from other places
       yamlFile <- ZIO.fromEither(
         YamlConfigSource.fromYamlFile(
-          ZFPath(confFile.getOrElse("watcher.yaml")).toFile
+          ZFPath(confFile.getOrElse("config.yaml")).toFile
         )
       )
       env <- ConfigSource.fromSystemEnv
@@ -59,7 +62,7 @@ object Main extends App {
     val logger = Logging.console(
       LogLevel.Info,
       LogFormat.ColoredLogFormat()
-    ) >>> Logging.withRootLoggerName("watcher")
+    ) >>> Logging.withRootLoggerName("kredik")
 
     program
       .inject(
@@ -80,11 +83,14 @@ object Main extends App {
         Kubernetes.live,
         DependencyWalker.live,
         GithubApi.live,
-        Authentication.live
+        Authentication.live,
+        netty.default,
+        config.default,
+        secretsmanager.live,
+        secrets.Secrets.live
       )
-      .catchSome {
-        case GitAuthenticationError(message) =>
-          log.error(message) *> ZIO.fail(ExitCode.failure)
+      .catchSome { case GitAuthenticationError(message) =>
+        log.error(message) *> ZIO.fail(ExitCode.failure)
       }
       .inject(logger, ZEnv.live)
       .exitCode

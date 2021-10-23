@@ -10,6 +10,7 @@ import zio.config.yaml.YamlConfigSource
 import nhyne.git.GitEvents.{Branch, Repository}
 import zio.logging.{Logging, log}
 import nhyne.Errors.KredikError
+import nhyne.config.ApplicationConfig
 
 trait DependencyConverter {
 
@@ -18,18 +19,16 @@ trait DependencyConverter {
       dependency: Dependency,
       workingDir: Path
   ): ZIO[
-    ZEnv with Has[GitCli] with Logging,
+    ZEnv with Has[GitCli] with Has[ApplicationConfig] with Logging,
     KredikError,
     (RepoConfig, Path)
   ]
 }
 
 object DependencyConverter {
-  private val watcherConfFile = ".watcher.yaml"
-  private val watcherConfFileShort = ".watcher.yml"
   private def readConfig(repoDir: Path, dependency: Dependency) =
     for {
-
+      configFile <- ZIO.service[ApplicationConfig].map(_.configFileName)
       configSource <-
         ZIO
           .fromEither(
@@ -37,13 +36,9 @@ object DependencyConverter {
               .fromYamlFile(
                 repoDir
                   ./(
-                    watcherConfFile
+                    configFile
                   )
                   .toFile
-              )
-              .orElse(
-                YamlConfigSource
-                  .fromYamlFile(repoDir./(watcherConfFileShort).toFile)
               )
           )
           .tapError(_ =>
@@ -62,7 +57,7 @@ object DependencyConverter {
           dependency: Dependency,
           workingDir: Path
       ): ZIO[
-        ZEnv with Has[GitCli] with Logging,
+        ZEnv with Has[GitCli] with Has[ApplicationConfig] with Logging,
         KredikError,
         (RepoConfig, Path)
       ] = {

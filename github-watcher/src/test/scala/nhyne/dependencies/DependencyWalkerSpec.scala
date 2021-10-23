@@ -1,5 +1,6 @@
 package nhyne.dependencies
 
+import nhyne.config.ApplicationConfig
 import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
 import zio.test._
@@ -93,6 +94,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
       DependencyConverterSpec.MockDependencyConverter.test,
       Logging.console(),
       DependencyWalker.live,
-      GitCliSpec.test
+      GitCliSpec.test,
+      ApplicationConfig.test
     )
 }

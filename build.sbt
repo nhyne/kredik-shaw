@@ -59,6 +59,8 @@ lazy val `github-watcher` = (project in file("./github-watcher"))
         "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpClientVersion,
         "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % sttpClientVersion,
         "io.d11" %% "zhttp" % "1.0.0.0-RC17",
+        "io.github.vigoo" %% "zio-aws-secretsmanager" % "3.17.65.1",
+        "io.github.vigoo" %% "zio-aws-netty" % "3.17.65.1",
         "dev.zio" %% "zio-test" % zioVersion % Test,
         "dev.zio" %% "zio-test-sbt" % zioVersion % Test
       ),

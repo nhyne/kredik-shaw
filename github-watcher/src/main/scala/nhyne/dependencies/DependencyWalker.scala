@@ -7,6 +7,7 @@ import zio.logging.Logging
 import zio.{Has, Ref, ZEnv, ZIO, ZLayer}
 import zio.nio.core.file.Path
 import nhyne.Errors.KredikError
+import nhyne.config.ApplicationConfig
 
 import scala.collection.immutable.Set
 
@@ -17,9 +18,12 @@ trait DependencyWalker {
       startingSha: String, // TODO: Make this something besides a string
       workingDir: Path
   ): ZIO[ZEnv with Has[DependencyConverter] with Has[
+    ApplicationConfig
+  ] with Has[
     GitCli
   ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]]
 }
+
 object DependencyWalker {
 
   // TODO: Want to pull in the functions in the parent object, just not sure about needing to mock all of them in a test or just the Dependency -> RepoConfig
@@ -32,6 +36,8 @@ object DependencyWalker {
           startingSha: String,
           workingDir: Path
       ): ZIO[ZEnv with Has[DependencyConverter] with Has[
+        ApplicationConfig
+      ] with Has[
         GitCli
       ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]] =
         walkDeps(
@@ -54,7 +60,9 @@ object DependencyWalker {
       seenDeps: Set[Dependency],
       configs: Map[RepoConfig, (Path, ImageTag)]
   ): ZIO[
-    ZEnv with Has[DependencyConverter] with Has[GitCli] with Logging,
+    ZEnv with Has[DependencyConverter] with Has[GitCli] with Has[
+      ApplicationConfig
+    ] with Logging,
     KredikError,
     Map[
       RepoConfig,

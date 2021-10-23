@@ -117,9 +117,8 @@ object Template {
             envVars: Map[String, String]
         ): ZIO[Deployments, K8sFailure, Unit] = {
           val deploys = getAll(Some(namespace))
-          val k8sEnvVars = envVars.map {
-            case (key, value) =>
-              EnvVar(key, value)
+          val k8sEnvVars = envVars.map { case (key, value) =>
+            EnvVar(key, value)
           }
           deploys
             .mapM(updateDeployEnvVars(_, k8sEnvVars.toVector))

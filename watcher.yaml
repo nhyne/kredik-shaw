@@ -1,7 +1,0 @@
----
-port: 8090
-prometheusPort: 9090
-organizations:
-  - nhyne
-imageSubstitutions:
-  - nginx
