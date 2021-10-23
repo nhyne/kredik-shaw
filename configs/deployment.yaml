@@ -40,7 +40,7 @@ spec:
           requests:
             memory: 1250M
         args:
-          - "resources/watcher.yaml"
+          - "resources/config.yaml"
         env:
         - name: GITHUB_USERNAME
           valueFrom:
@@ -73,7 +73,7 @@ spec:
             name: kredik-config
             items:
               - key: config
-                path: "watcher.yaml"
+                path: "config.yaml"
         - name: ssh-key
           secret:
             secretName: github-token

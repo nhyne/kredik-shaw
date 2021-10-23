@@ -19,12 +19,12 @@ object RepoConfig {
 
 @describe("this config is for a repo watcher")
 final case class RepoConfig(
-    resourceFolder: File,
-    templateCommand: TemplateCommand,
-    // TODO: Issue here with implicits and this param
-    // Believe it has to do with nested configs??
-    // TODO: This should really be a thunk
-    dependencies: Option[Set[Dependency]]
+  resourceFolder: File,
+  templateCommand: TemplateCommand,
+  // TODO: Issue here with implicits and this param
+  // Believe it has to do with nested configs??
+  // TODO: This should really be a thunk
+  dependencies: Option[Set[Dependency]]
 )
 
 // TODO: Would be nice if this used refinement types to perform some validations
@@ -32,13 +32,11 @@ final case class RepoConfig(
 //    we actually really need a refinement type or we need something else to know what the name of the repo is
 @describe("this config is for a dependency of a repo")
 final case class Dependency(
-    owner: String,
-    name: String,
-    branch: String,
-    imageTag: Option[ImageTag]
-)
-
-object Dependency {
-  def repoUrl(dependency: Dependency): String =
-    s"https://github.com/${dependency.owner}/${dependency.name}"
+  owner: String,
+  name: String,
+  branch: String,
+  imageTag: Option[ImageTag]
+) {
+  def repoUrl(): String =
+    s"https://github.com/$owner/$name"
 }

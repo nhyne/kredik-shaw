@@ -1,6 +1,6 @@
 package nhyne.kubernetes
 
-import nhyne.git.GitEvents.{Branch, Owner, PullRequest, Repository}
+import nhyne.git.GitEvents.{ Branch, Owner, PullRequest, Repository }
 import zio.test._
 import zio.test.Assertion.equalTo
 import zio.test.environment.TestEnvironment

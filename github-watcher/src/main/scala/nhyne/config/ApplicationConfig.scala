@@ -1,18 +1,39 @@
 package nhyne.config
 
+import zio.ZLayer
 import zio.config.magnolia.DeriveConfigDescriptor.descriptor
-import zio.config.magnolia.describe
 
 object ApplicationConfig {
   val appConfigDescriptor = descriptor[ApplicationConfig]
+
+  private[nhyne] val test = ZLayer.succeed(
+    ApplicationConfig(
+      8080,
+      9090,
+      List("nhyne"),
+      SecretsConfig.SecretsEnvConfig("GITHUB_WEBHOOK"),
+      ".watcher.yaml",
+      "kredik"
+    )
+  )
 }
 
 // TODO: Type Refinement
 final case class ApplicationConfig(
-    port: Int,
-    prometheusPort: Int,
-    organizations: List[String],
-    @describe(
-      "Image whose tag will be substituted for the git sha of the pull request"
-    ) imageSubstitutions: List[String] // not sure about this?
+  port: Int,
+  prometheusPort: Int,
+  organizations: List[String],
+  webhookSecrets: SecretsConfig,
+  configFileName: String,
+  commentPrefix: String
 )
+
+sealed trait SecretsConfig {
+  def prefix(): String
+}
+
+object SecretsConfig {
+
+  final case class SecretsManagerConfig(prefix: String) extends SecretsConfig
+  final case class SecretsEnvConfig(prefix: String)     extends SecretsConfig
+}

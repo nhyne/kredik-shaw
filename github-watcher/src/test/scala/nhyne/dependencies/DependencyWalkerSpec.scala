@@ -1,11 +1,12 @@
 package nhyne.dependencies
 
+import nhyne.config.ApplicationConfig
 import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
 import nhyne.git.GitCliSpec
-import nhyne.template.{Dependency, RepoConfig}
+import nhyne.template.{ Dependency, RepoConfig }
 import zio.test.environment.TestEnvironment
 import zio._
 import zio.logging.Logging
@@ -26,7 +27,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
           .use { path =>
             assertM(
               ZIO
-                .service[DependencyWalker.Service]
+                .service[DependencyWalker]
                 .flatMap(_.walkDependencies(repoConfig, path, "somesha", path))
             )(
               equalTo(Map(repoConfig -> ((path, ImageTag("somesha")))))
@@ -44,7 +45,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
           .use { path =>
             assertM(
               ZIO
-                .service[DependencyWalker.Service]
+                .service[DependencyWalker]
                 .flatMap(
                   _.walkDependencies(repoConfig, path, "somesha", path)
                 )
@@ -56,7 +57,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
                     new File("abc"),
                     TemplateCommand.Helm,
                     None
-                  ) -> ((Path("abc"), ImageTag("latest")))
+                  )          -> ((Path("abc"), ImageTag("latest")))
                 )
               )
             )
@@ -82,7 +83,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
           .use { path =>
             assertM(
               ZIO
-                .service[DependencyWalker.Service]
+                .service[DependencyWalker]
                 .flatMap(_.walkDependencies(repoConfig, path, "somesha", path))
             )(
               equalTo(Map(repoConfig -> ((Path("abc"), ImageTag("circular")))))
@@ -93,6 +94,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
       DependencyConverterSpec.MockDependencyConverter.test,
       Logging.console(),
       DependencyWalker.live,
-      GitCliSpec.test
+      GitCliSpec.test,
+      ApplicationConfig.test
     )
 }
