@@ -23,6 +23,8 @@ object Secrets {
       repository: Repository
     ): ZIO[SecretsManager with Has[ApplicationConfig], KredikError, Unit] = ???
 
+    // TODO: Reading this should depend on what kind of secret config we have
+    //    Or should we return different versions of this for the different secret config types we have?
     override def readSecret(
       repository: Repository
     ): ZIO[SecretsManager with Has[ApplicationConfig], KredikError, String] =

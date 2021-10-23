@@ -56,7 +56,12 @@ object WebhookApi {
     HttpApp.collectM {
       case req @ Method.POST -> `apiRoot`                                                  =>
         githubWebhookPost(req).mapBoth(
-          cause => HttpError.InternalServerError(cause = Some(cause.toThrowable())),
+          {
+            case cause @ KredikError.InvalidSignature => HttpError.Unauthorized(cause.toString)
+            case cause                                =>
+              HttpError
+                .InternalServerError(cause = Some(cause.toThrowable()))
+          },
           body => Response.text(body)
         )
       case Method.POST -> `apiRoot` / "from-branch" / organization / repoName / branchName =>
