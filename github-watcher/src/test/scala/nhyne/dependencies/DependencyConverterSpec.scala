@@ -3,10 +3,10 @@ package nhyne.dependencies
 import nhyne.Errors.KredikError
 import nhyne.config.ApplicationConfig
 import nhyne.git.GitCliSpec
-import nhyne.template.{Dependency, RepoConfig}
+import nhyne.template.{ Dependency, RepoConfig }
 import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
-import zio.{Has, ULayer, ZIO, ZLayer}
+import zio.{ Has, ULayer, ZIO, ZLayer }
 import zio.blocking.Blocking
 import zio.logging.Logging
 import zio.nio.core.file.Path
@@ -31,10 +31,9 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
           .use { path =>
             assertM(
               for {
-                stuff <-
-                  ZIO
-                    .service[DependencyConverter]
-                    .flatMap(_.dependencyToRepoConfig(dependency, path))
+                stuff <- ZIO
+                           .service[DependencyConverter]
+                           .flatMap(_.dependencyToRepoConfig(dependency, path))
               } yield stuff._1
             )(
               equalTo(
@@ -77,7 +76,7 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
           Path("abc")
         )
       ),
-      "circular" -> (
+      "circular"       -> (
         (
           RepoConfig(
             new File("itsacircle"),
@@ -101,8 +100,8 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
     val test: ULayer[Has[DependencyConverter]] =
       ZLayer.succeed(new DependencyConverter {
         override def dependencyToRepoConfig(
-            dependency: Dependency,
-            workingDir: Path
+          dependency: Dependency,
+          workingDir: Path
         ): ZIO[Blocking with Random with Has[
           ApplicationConfig
         ], KredikError, (RepoConfig, Path)] =

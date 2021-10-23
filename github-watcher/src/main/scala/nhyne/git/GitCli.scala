@@ -2,39 +2,39 @@ package nhyne.git
 
 import nhyne.Errors.KredikError.CliError
 import nhyne.CommandWrapper.commandToKredikExitCode
-import zio.{ExitCode, ZIO, ZLayer}
+import zio.{ ExitCode, ZIO, ZLayer }
 import zio.blocking.Blocking
 import nhyne.git.GitEvents._
 import zio.nio.core.file.Path
 import zio.process.Command
 
-trait GitCli {
+trait GitCli  {
   def gitClone(
-      repository: Repository,
-      branch: Branch,
-      cloneInto: Path
+    repository: Repository,
+    branch: Branch,
+    cloneInto: Path
   ): ZIO[Blocking, CliError, ExitCode]
 
   def gitCloneDepth(
-      repository: Repository,
-      branch: Branch,
-      depth: Int,
-      cloneInto: Path
+    repository: Repository,
+    branch: Branch,
+    depth: Int,
+    cloneInto: Path
   ): ZIO[Blocking, CliError, ExitCode]
 
   def gitCloneAndMerge(
-      pullRequest: PullRequest,
-      cloneDir: Path
+    pullRequest: PullRequest,
+    cloneDir: Path
   ): ZIO[Blocking, CliError, ExitCode]
 }
 object GitCli {
 
   val live = ZLayer.succeed(new GitCli {
     override def gitCloneDepth(
-        repository: Repository,
-        branch: Branch,
-        depth: Int,
-        cloneInto: Path
+      repository: Repository,
+      branch: Branch,
+      depth: Int,
+      cloneInto: Path
     ): ZIO[Blocking, CliError, ExitCode] =
       commandToKredikExitCode(
         Command(
@@ -48,9 +48,9 @@ object GitCli {
       )
 
     override def gitClone(
-        repository: Repository,
-        branch: Branch,
-        cloneInto: Path
+      repository: Repository,
+      branch: Branch,
+      cloneInto: Path
     ): ZIO[Blocking, CliError, ExitCode] =
       commandToKredikExitCode(
         Command(
@@ -63,23 +63,23 @@ object GitCli {
       )
 
     override def gitCloneAndMerge(
-        pullRequest: PullRequest,
-        cloneInto: Path
+      pullRequest: PullRequest,
+      cloneInto: Path
     ): ZIO[
       Blocking,
       CliError,
       ExitCode
     ] =
       for {
-        _ <- gitClone(
-          pullRequest.head.repo,
-          pullRequest.head,
-          cloneInto
-        )
+        _        <- gitClone(
+                      pullRequest.head.repo,
+                      pullRequest.head,
+                      cloneInto
+                    )
         exitCode <- commandToKredikExitCode(
-          gitMerge(pullRequest.base)
-            .workingDirectory(cloneInto.toFile)
-        )
+                      gitMerge(pullRequest.base)
+                        .workingDirectory(cloneInto.toFile)
+                    )
       } yield exitCode
   })
 

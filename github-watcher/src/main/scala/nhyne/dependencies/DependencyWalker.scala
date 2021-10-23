@@ -1,10 +1,10 @@
 package nhyne.dependencies
 
 import nhyne.git.GitCli
-import nhyne.template.{Dependency, RepoConfig}
+import nhyne.template.{ Dependency, RepoConfig }
 import nhyne.template.RepoConfig.ImageTag
 import zio.logging.Logging
-import zio.{Has, Ref, ZEnv, ZIO, ZLayer}
+import zio.{ Has, Ref, ZEnv, ZIO, ZLayer }
 import zio.nio.core.file.Path
 import nhyne.Errors.KredikError
 import nhyne.config.ApplicationConfig
@@ -13,10 +13,10 @@ import scala.collection.immutable.Set
 
 trait DependencyWalker {
   def walkDependencies(
-      startingConfig: RepoConfig,
-      startingRepoPath: Path,
-      startingSha: String, // TODO: Make this something besides a string
-      workingDir: Path
+    startingConfig: RepoConfig,
+    startingRepoPath: Path,
+    startingSha: String, // TODO: Make this something besides a string
+    workingDir: Path
   ): ZIO[ZEnv with Has[DependencyConverter] with Has[
     ApplicationConfig
   ] with Has[
@@ -31,10 +31,10 @@ object DependencyWalker {
   val live = ZLayer.succeed(
     new DependencyWalker {
       override def walkDependencies(
-          startingConfig: RepoConfig,
-          startingRepoPath: Path,
-          startingSha: String,
-          workingDir: Path
+        startingConfig: RepoConfig,
+        startingRepoPath: Path,
+        startingSha: String,
+        workingDir: Path
       ): ZIO[ZEnv with Has[DependencyConverter] with Has[
         ApplicationConfig
       ] with Has[
@@ -55,10 +55,10 @@ object DependencyWalker {
    * TODO: Make this tail recursive
    */
   private def walkDeps(
-      workingDir: Path,
-      unseenDeps: Set[Dependency],
-      seenDeps: Set[Dependency],
-      configs: Map[RepoConfig, (Path, ImageTag)]
+    workingDir: Path,
+    unseenDeps: Set[Dependency],
+    seenDeps: Set[Dependency],
+    configs: Map[RepoConfig, (Path, ImageTag)]
   ): ZIO[
     ZEnv with Has[DependencyConverter] with Has[GitCli] with Has[
       ApplicationConfig
@@ -70,49 +70,46 @@ object DependencyWalker {
     ]
   ] =
     for {
-      newUnseenDepsRef <- Ref.make(Set.empty[Dependency])
-      seenDepsRef <- Ref.make(seenDeps)
+      newUnseenDepsRef    <- Ref.make(Set.empty[Dependency])
+      seenDepsRef         <- Ref.make(seenDeps)
       processedConfigsRef <- Ref.make(configs)
-      _ <- ZIO.foreach(unseenDeps)(dep => {
-        for {
-          seen <- seenDepsRef.get
-          shouldProcess = !seen.contains(dep)
-          maybeNewDependenciesToProcess <-
-            if (shouldProcess)
-              ZIO.service[DependencyConverter].flatMap { depService =>
-                depService.dependencyToRepoConfig(dep, workingDir).flatMap {
-                  case (rc, path) =>
-                    processedConfigsRef.get.flatMap { processedConfigs =>
-                      processedConfigsRef
-                        .set(
-                          processedConfigs + (rc -> (
-                            (
-                              path,
-                              dep.imageTag
-                                .getOrElse(ImageTag("latest"))
-                            )
-                          ))
-                        )
-                        .flatMap(_ => ZIO.succeed(rc.dependencies))
-                    }
-                }
-              }
-            else ZIO.none
-          nextSeen = seen + dep
-          _ <- seenDepsRef.set(nextSeen)
-          depsToProcess =
-            maybeNewDependenciesToProcess
-              .getOrElse(Set.empty)
-              .diff(nextSeen)
-          newUnseenDeps <- newUnseenDepsRef.get
-          _ <- newUnseenDepsRef.set(newUnseenDeps ++ depsToProcess)
-        } yield ()
-      })
-      newUnseenDeps <- newUnseenDepsRef.get
-      newSeenDeps <- seenDepsRef.get
-      deps <- processedConfigsRef.get
-      ret <-
-        if (newUnseenDeps.isEmpty) ZIO.succeed(deps)
-        else walkDeps(workingDir, newUnseenDeps, newSeenDeps, deps)
+      _                   <- ZIO.foreach(unseenDeps) { dep =>
+                               for {
+                                 seen                          <- seenDepsRef.get
+                                 shouldProcess                  = !seen.contains(dep)
+                                 maybeNewDependenciesToProcess <- if (shouldProcess)
+                                                                    ZIO.service[DependencyConverter].flatMap { depService =>
+                                                                      depService.dependencyToRepoConfig(dep, workingDir).flatMap {
+                                                                        case (rc, path) =>
+                                                                          processedConfigsRef.get.flatMap { processedConfigs =>
+                                                                            processedConfigsRef
+                                                                              .set(
+                                                                                processedConfigs + (rc -> (
+                                                                                  (
+                                                                                    path,
+                                                                                    dep.imageTag
+                                                                                      .getOrElse(ImageTag("latest"))
+                                                                                  )
+                                                                                ))
+                                                                              )
+                                                                              .flatMap(_ => ZIO.succeed(rc.dependencies))
+                                                                          }
+                                                                      }
+                                                                    }
+                                                                  else ZIO.none
+                                 nextSeen                       = seen + dep
+                                 _                             <- seenDepsRef.set(nextSeen)
+                                 depsToProcess                  = maybeNewDependenciesToProcess
+                                                                    .getOrElse(Set.empty)
+                                                                    .diff(nextSeen)
+                                 newUnseenDeps                 <- newUnseenDepsRef.get
+                                 _                             <- newUnseenDepsRef.set(newUnseenDeps ++ depsToProcess)
+                               } yield ()
+                             }
+      newUnseenDeps       <- newUnseenDepsRef.get
+      newSeenDeps         <- seenDepsRef.get
+      deps                <- processedConfigsRef.get
+      ret                 <- if (newUnseenDeps.isEmpty) ZIO.succeed(deps)
+                             else walkDeps(workingDir, newUnseenDeps, newSeenDeps, deps)
     } yield ret
 }

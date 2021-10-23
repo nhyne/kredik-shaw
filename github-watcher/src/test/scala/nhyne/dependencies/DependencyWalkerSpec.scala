@@ -6,7 +6,7 @@ import nhyne.template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
 import nhyne.git.GitCliSpec
-import nhyne.template.{Dependency, RepoConfig}
+import nhyne.template.{ Dependency, RepoConfig }
 import zio.test.environment.TestEnvironment
 import zio._
 import zio.logging.Logging
@@ -57,7 +57,7 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
                     new File("abc"),
                     TemplateCommand.Helm,
                     None
-                  ) -> ((Path("abc"), ImageTag("latest")))
+                  )          -> ((Path("abc"), ImageTag("latest")))
                 )
               )
             )

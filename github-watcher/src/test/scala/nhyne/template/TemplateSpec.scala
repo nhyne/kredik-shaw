@@ -2,14 +2,9 @@ package nhyne.template
 
 import com.coralogix.zio.k8s.quicklens._
 import com.softwaremill.quicklens._
-import com.coralogix.zio.k8s.model.apps.v1.{Deployment, DeploymentSpec}
+import com.coralogix.zio.k8s.model.apps.v1.{ Deployment, DeploymentSpec }
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.LabelSelector
-import com.coralogix.zio.k8s.model.core.v1.{
-  Container,
-  EnvVar,
-  PodSpec,
-  PodTemplateSpec
-}
+import com.coralogix.zio.k8s.model.core.v1.{ Container, EnvVar, PodSpec, PodTemplateSpec }
 import nhyne.template.Template.updateDeployEnvVars
 import zio.test.environment.TestEnvironment
 import zio.test._

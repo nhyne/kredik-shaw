@@ -19,11 +19,11 @@ object ApplicationConfig {
 
 // TODO: Type Refinement
 final case class ApplicationConfig(
-    port: Int,
-    prometheusPort: Int,
-    organizations: List[String],
-    webhookSecrets: SecretsConfig,
-    configFileName: String
+  port: Int,
+  prometheusPort: Int,
+  organizations: List[String],
+  webhookSecrets: SecretsConfig,
+  configFileName: String
 )
 
 sealed trait SecretsConfig {
@@ -33,5 +33,5 @@ sealed trait SecretsConfig {
 object SecretsConfig {
 
   final case class SecretsManagerConfig(prefix: String) extends SecretsConfig
-  final case class SecretsEnvConfig(prefix: String) extends SecretsConfig
+  final case class SecretsEnvConfig(prefix: String)     extends SecretsConfig
 }

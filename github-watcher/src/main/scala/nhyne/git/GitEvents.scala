@@ -13,22 +13,21 @@ object GitEvents {
   object WebhookEvent {
 
     final case class IssueCommentEvent(
-        action: ActionVerb,
-        comment: Comment,
-        repository: Repository,
-        issue: Issue
+      action: ActionVerb,
+      comment: Comment,
+      repository: Repository,
+      issue: Issue
     ) extends WebhookEvent {
       def getBody() = comment.body
     }
 
     final case class PullRequestEvent(
-        action: ActionVerb,
-        number: Int,
-        @jsonField("pull_request") pullRequest: PullRequest
+      action: ActionVerb,
+      number: Int,
+      @jsonField("pull_request") pullRequest: PullRequest
     ) extends WebhookEvent
 
-    final case class LabeledEvent(action: ActionVerb, label: Label)
-        extends WebhookEvent
+    final case class LabeledEvent(action: ActionVerb, label: Label) extends WebhookEvent
 
   }
 
@@ -39,13 +38,13 @@ object GitEvents {
   }
 
   final case class Branch(
-      ref: String,
-      sha: String,
-      repo: Repository // there are a lot more fields than just these
+    ref: String,
+    sha: String,
+    repo: Repository // there are a lot more fields than just these
   ) extends DeployableGitState {
     def getBaseRepoName: String = repo.name
     def getBaseFullName: String = repo.fullName
-    def getSha: String = sha
+    def getSha: String          = sha
   }
 
   object Branch {
@@ -54,25 +53,25 @@ object GitEvents {
   }
 
   final case class PullRequest(
-      url: String,
-      id: Long,
-      number: Int,
-      state: String, // TODO: Should be a union type when it is used
-      head: Branch,
-      base: Branch
+    url: String,
+    id: Long,
+    number: Int,
+    state: String, // TODO: Should be a union type when it is used
+    head: Branch,
+    base: Branch
   ) extends DeployableGitState {
     def getBaseFullName: String = base.repo.fullName
-    def getSha: String = head.sha
+    def getSha: String          = head.sha
     def getBaseRepoName: String = base.repo.name
-    def getBaseOwner: String = base.repo.owner.login
+    def getBaseOwner: String    = base.repo.owner.login
   }
   final case class Repository(
-      name: String,
-      @jsonField("full_name") fullName: String,
-      owner: Owner,
-      @jsonField("html_url") htmlUrl: String,
-      @jsonField("ssh_url") sshUrl: String,
-      @jsonField("clone_url") cloneUrl: String
+    name: String,
+    @jsonField("full_name") fullName: String,
+    owner: Owner,
+    @jsonField("html_url") htmlUrl: String,
+    @jsonField("ssh_url") sshUrl: String,
+    @jsonField("clone_url") cloneUrl: String
   )
   object Repository {
     def fromNameAndOwner(name: String, owner: String): Repository =
@@ -92,11 +91,11 @@ object GitEvents {
   final case class Issue(@jsonField("number") prNumber: Int)
 
   final case class GitRef(
-      `object`: GitRefObject
+    `object`: GitRefObject
   )
 
   final case class GitRefObject(
-      sha: String
+    sha: String
   )
 
   sealed trait ActionVerb
@@ -124,27 +123,25 @@ object GitEvents {
 
   implicit val gitRefObjectDecoder: JsonDecoder[GitRefObject] =
     DeriveJsonDecoder.gen[GitRefObject]
-  implicit val gitRefDecoder: JsonDecoder[GitRef] =
+  implicit val gitRefDecoder: JsonDecoder[GitRef]             =
     DeriveJsonDecoder.gen[GitRef]
 
-  implicit val issueDecoder: JsonDecoder[Issue] = DeriveJsonDecoder.gen[Issue]
-  implicit val ownerDecoder: JsonDecoder[Owner] = DeriveJsonDecoder.gen[Owner]
-  implicit val repositoryDecoder: JsonDecoder[Repository] =
+  implicit val issueDecoder: JsonDecoder[Issue]                                    = DeriveJsonDecoder.gen[Issue]
+  implicit val ownerDecoder: JsonDecoder[Owner]                                    = DeriveJsonDecoder.gen[Owner]
+  implicit val repositoryDecoder: JsonDecoder[Repository]                          =
     DeriveJsonDecoder.gen[Repository]
-  implicit val branchDecoder: JsonDecoder[Branch] =
+  implicit val branchDecoder: JsonDecoder[Branch]                                  =
     DeriveJsonDecoder.gen[Branch]
-  implicit val pullRequestDecoder: JsonDecoder[PullRequest] =
+  implicit val pullRequestDecoder: JsonDecoder[PullRequest]                        =
     DeriveJsonDecoder.gen[PullRequest]
-  implicit val pullRequestEventDecoder
-      : JsonDecoder[WebhookEvent.PullRequestEvent] =
+  implicit val pullRequestEventDecoder: JsonDecoder[WebhookEvent.PullRequestEvent] =
     DeriveJsonDecoder.gen[WebhookEvent.PullRequestEvent]
-  implicit val commentDecoder: JsonDecoder[Comment] =
+  implicit val commentDecoder: JsonDecoder[Comment]                                =
     DeriveJsonDecoder.gen[Comment]
-  implicit val issueCommentDecoder
-      : JsonDecoder[WebhookEvent.IssueCommentEvent] =
+  implicit val issueCommentDecoder: JsonDecoder[WebhookEvent.IssueCommentEvent]    =
     DeriveJsonDecoder.gen[WebhookEvent.IssueCommentEvent]
 
-  implicit val labelDecoder: JsonDecoder[Label] = DeriveJsonDecoder.gen[Label]
+  implicit val labelDecoder: JsonDecoder[Label]                          = DeriveJsonDecoder.gen[Label]
   implicit val labelEventDecoder: JsonDecoder[WebhookEvent.LabeledEvent] =
     DeriveJsonDecoder.gen[WebhookEvent.LabeledEvent]
 
