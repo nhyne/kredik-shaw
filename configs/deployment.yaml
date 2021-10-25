@@ -9,6 +9,11 @@ data:
     ---
     port: 8090
     prometheusPort: 9090
+    configFileName: ".config.yaml"
+    commentPrefix: "kredik"
+    webhookSecrets:
+      SecretsEnvConfig:
+        prefix: "KREDIK_WEBHOOK"
     organizations:
       - nhyne
     imageSubstitutions:

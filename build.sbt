@@ -12,11 +12,11 @@ lazy val root = (project in file("."))
   .settings(
     publish / skip := true,
     name := "root",
-    Compile / run := (`github-watcher` / Compile / run).evaluated
+    Compile / run := (`kredik-shaw` / Compile / run).evaluated
   )
-  .aggregate(`github-watcher`)
+  .aggregate(`kredik-shaw`)
 
-lazy val `github-watcher` = (project in file("./github-watcher"))
+lazy val `kredik-shaw` = (project in file("./github-watcher"))
   .enablePlugins(DockerPlugin, JavaAppPackaging)
   .settings(
     version := "0.0.1-SNAPSHOT",
