@@ -54,7 +54,7 @@ object WebhookApi {
   // TODO: health and ready endpoints
   private val apiServer: HttpApp[ServerEnv, HttpError] =
     HttpApp.collectM {
-      case req @ Method.POST -> `apiRoot`                                                  =>
+      case req @ Method.POST -> `apiRoot` / "github"                                       =>
         githubWebhookPost(req).mapBoth(
           {
             case cause @ KredikError.InvalidSignature => HttpError.Unauthorized(cause.toString)
