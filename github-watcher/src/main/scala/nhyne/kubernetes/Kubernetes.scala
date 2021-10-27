@@ -7,7 +7,6 @@ import com.coralogix.zio.k8s.model.core.v1.Namespace
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{ DeleteOptions, ObjectMeta, Status }
 import nhyne.git.GitEvents.{ Branch, DeployableGitState, PullRequest }
 import nhyne.prometheus.Metrics
-import nhyne.prometheus.Metrics
 import zio.nio.core.file.Path
 import zio.{ ExitCode, Has, ZIO, ZLayer }
 import zio.blocking.Blocking

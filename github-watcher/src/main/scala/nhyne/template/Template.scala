@@ -40,7 +40,6 @@ object Template {
     case object Helm          extends TemplateCommand
     case object Kustomize     extends TemplateCommand
     case object KustomizeHelm extends TemplateCommand
-    // case object None extends TemplateCommand -- this would essentially just read all the files into a string? -- would have to do a `sed`
   }
 
   private def kustomizeCommand(path: Path) =
@@ -82,10 +81,6 @@ object Template {
         ): ZIO[Blocking, KredikError, Path] =
           for {
             templateOutput <- template(repoFolder, repoConfig, environmentVars)
-                                .map(
-                                  substituteNamespace(_, namespace.value)
-                                )
-                                .map(substituteImage(_, imageTag))
             tempFilePath   <- Files
                                 .createTempFile(
                                   prefix = Some("templatedOutput"),
@@ -124,24 +119,6 @@ object Template {
 
       }
     }
-
-  private val NAMESPACE_SUBSTITUTION = "WATCHER_NS_NAME"
-  /*
-   * TODO: This needs to be better
-   *    It would be better to provide a case class of fields that are able to be substituted?
-   *    Or even just doing it in parallel for all files in the `.watcher` directory?
-   *
-   * Would be nice to just use some kustomize vars for this?
-   *    - Each repo can specify where they need it substituted
-   *    - Write one file out and have kustomize pull it in as a resource and some vars from it?
-   */
-
-  private def substituteNamespace(manifests: String, namespaceName: String) =
-    manifests.replace(NAMESPACE_SUBSTITUTION, namespaceName)
-
-  private val GIT_REV_SUBSTITUTION                                   = "GIT_HASH"
-  private def substituteImage(manifests: String, imageTag: ImageTag) =
-    manifests.replace(GIT_REV_SUBSTITUTION, imageTag.value)
 
   def updateDeployEnvVars(
     deploy: Deployment,
