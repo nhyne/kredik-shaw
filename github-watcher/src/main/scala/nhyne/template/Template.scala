@@ -17,6 +17,7 @@ import com.coralogix.zio.k8s.client.model.K8sNamespace
 import com.coralogix.zio.k8s.model.apps.v1.Deployment
 import com.coralogix.zio.k8s.model.core.v1.EnvVar
 import nhyne.Errors.KredikError
+import nhyne.config.ApplicationConfig
 
 trait Template  {
   def templateManifests(
@@ -25,7 +26,7 @@ trait Template  {
     namespace: K8sNamespace,
     environmentVars: Map[String, String],
     imageTag: ImageTag
-  ): ZIO[Blocking, KredikError, Path]
+  ): ZIO[Blocking with Has[ApplicationConfig], KredikError, Path]
 
   def injectEnvVarsIntoDeployments(
     namespace: K8sNamespace,
@@ -78,9 +79,11 @@ object Template {
           namespace: K8sNamespace,
           environmentVars: Map[String, String],
           imageTag: ImageTag
-        ): ZIO[Blocking, KredikError, Path] =
+        ): ZIO[Blocking with Has[ApplicationConfig], KredikError, Path] =
           for {
+            commentPrefix  <- ZIO.service[ApplicationConfig].map(_.commentPrefix)
             templateOutput <- template(repoFolder, repoConfig, environmentVars)
+                                .map(substituteNamespace(_, commentPrefix, namespace))
             tempFilePath   <- Files
                                 .createTempFile(
                                   prefix = Some("templatedOutput"),
@@ -119,6 +122,9 @@ object Template {
 
       }
     }
+
+  private def substituteNamespace(manifests: String, commentPrefix: String, prNamespace: K8sNamespace) =
+    manifests.replace(s"${commentPrefix.toUpperCase}_NS_NAME", prNamespace.value)
 
   def updateDeployEnvVars(
     deploy: Deployment,

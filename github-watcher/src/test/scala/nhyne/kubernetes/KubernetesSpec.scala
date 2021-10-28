@@ -15,7 +15,7 @@ object KubernetesSpec extends DefaultRunnableSpec {
           Repository("name", "fullName", Owner("owner"), "url", "url", "url")
         )
         val nsName = Kubernetes.namespaceName(
-          PullRequest("url", 123, 5, "state", branch, branch)
+          PullRequest("url", 123, 5, "state", branch, branch, "merge-sha")
         )
         assert(nsName)(equalTo("pr-name-5"))
       },
@@ -33,7 +33,7 @@ object KubernetesSpec extends DefaultRunnableSpec {
           )
         )
         val nsName = Kubernetes.namespaceName(
-          PullRequest("url", 123, 5, "state", branch, branch)
+          PullRequest("url", 123, 5, "state", branch, branch, "merge-sha")
         )
         assert(nsName)(equalTo(("pr-" + "name" * 100).take(63)))
 
