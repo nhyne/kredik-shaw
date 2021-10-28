@@ -314,6 +314,7 @@ object WebhookApi {
     for {
       initialRepoConfig <- readConfig(repoDirectory)
                              .mapError(KredikError.IOReadError)
+      commentPrefix     <- ZIO.service[ApplicationConfig].map(_.commentPrefix).map(_.toUpperCase)
       depsWithPaths     <- ZIO
                              .service[DependencyWalker]
                              .flatMap(
@@ -329,8 +330,9 @@ object WebhookApi {
                              .createPRNamespace(gitDeployable)
                              .mapError(e => KredikError.K8sError(e))
       envVars            = Map(
-                             "PR_ENVIRONMENT" -> "TRUE",
-                             "IMAGE_TAG"      -> "1.7.6"
+                             s"${commentPrefix}_ENVIRONMENT" -> "TRUE",
+                             s"${commentPrefix}_IMAGE_TAG"   -> gitDeployable.getSha,
+                             s"${commentPrefix}_NAMESPACE"   -> namespace.value
                            )
       templateService   <- ZIO.service[template.Template]
       _                 <- ZIO.foreach_(depsWithPaths) {
