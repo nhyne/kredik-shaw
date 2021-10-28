@@ -73,7 +73,7 @@ object DependencyWalker {
       newUnseenDepsRef    <- Ref.make(Set.empty[Dependency])
       seenDepsRef         <- Ref.make(seenDeps)
       processedConfigsRef <- Ref.make(configs)
-      _                   <- ZIO.foreach(unseenDeps) { dep =>
+      _                   <- ZIO.foreach_(unseenDeps) { dep =>
                                for {
                                  seen                          <- seenDepsRef.get
                                  shouldProcess                  = !seen.contains(dep)
@@ -92,7 +92,7 @@ object DependencyWalker {
                                                                                   )
                                                                                 ))
                                                                               )
-                                                                              .flatMap(_ => ZIO.succeed(rc.dependencies))
+                                                                              .as(rc.dependencies)
                                                                           }
                                                                       }
                                                                     }

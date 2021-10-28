@@ -60,10 +60,11 @@ object GitEvents {
     number: Int,
     state: String, // TODO: Should be a union type when it is used
     head: Branch,
-    base: Branch
+    base: Branch,
+    @jsonField("merge_commit_sha") mergeCommitSha: String
   ) extends DeployableGitState {
     def getBaseFullName: String = base.repo.fullName
-    def getSha: String          = head.sha
+    def getSha: String          = mergeCommitSha
     def getBaseRepoName: String = base.repo.name
     def getBaseOwner: String    = base.repo.owner.login
   }

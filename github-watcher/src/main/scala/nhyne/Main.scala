@@ -24,6 +24,7 @@ import zio.metrics.prometheus.helpers.{ getCurrentRegistry, http, initializeDefa
 import io.github.vigoo.zioaws.core.config
 import io.github.vigoo.zioaws.netty
 import io.github.vigoo.zioaws.secretsmanager
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider
 
 object Main extends App {
 
@@ -60,6 +61,15 @@ object Main extends App {
       LogFormat.ColoredLogFormat()
     ) >>> Logging.withRootLoggerName("kredik")
 
+    val awsConfig = ZLayer.succeed(
+      config.CommonAwsConfig(
+        region = None,
+        credentialsProvider = DefaultCredentialsProvider.create(),
+        endpointOverride = None,
+        commonClientConfig = None
+      )
+    )
+
     program
       .inject(
         ZEnv.live,
@@ -81,7 +91,8 @@ object Main extends App {
         GithubApi.live,
         Authentication.live,
         netty.default,
-        config.default,
+        awsConfig,
+        config.configured(),
         secretsmanager.live,
         secrets.Secrets.live
       )
