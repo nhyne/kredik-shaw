@@ -58,7 +58,7 @@ object Template {
   ): ZIO[Blocking, KredikError, String] =
     for {
       path           <- dir
-                          ./(config.resourceFolder.getName)
+                          ./(config.resourceFolder.getPath)
                           .toAbsolutePath
                           .mapError(e => KredikError.GeneralError(e.getCause))
       templateCommand = config.templateCommand match {

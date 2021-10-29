@@ -24,7 +24,7 @@ lazy val `kredik-shaw` = (project in file("./github-watcher"))
     Compile / mainClass := Some("nhyne.Main"),
     reStart / mainClass := Some("nhyne.Main"),
     scalaVersion := scala_2_13,
-    dockerBaseImage := "nhyne/openjdk-kredik:16",
+    dockerBaseImage := "nhyne/openjdk-kredik:16-0.2",
     Docker / daemonUser := "rashek",
     dockerExposedPorts ++= Seq(8090, 9090),
     scalacOptions ++= Seq(
@@ -61,6 +61,7 @@ lazy val `kredik-shaw` = (project in file("./github-watcher"))
         "io.d11"                        %% "zhttp"                         % "1.0.0.0-RC17",
         "io.github.vigoo"               %% "zio-aws-secretsmanager"        % "3.17.65.1",
         "io.github.vigoo"               %% "zio-aws-netty"                 % "3.17.65.1",
+        "io.github.vigoo"               %% "zio-aws-sts"                   % "3.17.65.1",
         "dev.zio"                       %% "zio-test"                      % zioVersion % Test,
         "dev.zio"                       %% "zio-test-sbt"                  % zioVersion % Test
       ),
