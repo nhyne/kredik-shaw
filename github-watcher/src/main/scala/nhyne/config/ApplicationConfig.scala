@@ -13,7 +13,8 @@ object ApplicationConfig {
       List("nhyne"),
       SecretsConfig.SecretsEnvConfig("GITHUB_WEBHOOK"),
       ".watcher.yaml",
-      "kredik"
+      "kredik",
+      Some(true)
     )
   )
 }
@@ -25,7 +26,8 @@ final case class ApplicationConfig(
   organizations: List[String],
   webhookSecrets: SecretsConfig,
   configFileName: String,
-  commentPrefix: String
+  commentPrefix: String,
+  devMode: Option[Boolean]
 )
 
 sealed trait SecretsConfig {

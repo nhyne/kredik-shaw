@@ -1,7 +1,9 @@
 package nhyne.git
 
+import nhyne.config.ApplicationConfig
 import nhyne.git.GithubApi.SBackend
 import zio._
+import zio.blocking.Blocking
 import zio.system.{ env, System }
 
 trait Authentication {
@@ -16,29 +18,27 @@ object Authentication {
 
   final case class GitAuthenticationError(message: String)
 
-  val live: ZLayer[Has[SBackend] with System with Has[GithubApi], Object, Has[
+  val live: ZLayer[Has[SBackend] with System with Has[GithubApi] with Has[GitCli] with Blocking with Has[
+    ApplicationConfig
+  ], Object, Has[
     Authentication
   ]] =
-    ZLayer.fromEffect(for {
+    (for {
       authentication <- readAuthVars()
-      isValid        <- ZIO
+      githubUser     <- ZIO
                           .service[GithubApi]
                           .flatMap(
                             _.validateAuth(authentication)
                               .mapError(authFailure => GitAuthenticationError(s"Could not validate auth: $authFailure"))
                           )
-      _              <- ZIO
-                          .fail(
-                            GitAuthenticationError(
-                              "Provided credentials could not make valid request to Github API"
-                            )
-                          )
-                          .when(!isValid)
+      inDev          <- ZIO.service[ApplicationConfig].map(_.devMode)
+      _              <- ZIO.service[GitCli].flatMap(_.setGitConfig(githubUser)).when(!inDev.getOrElse(false))
     } yield new Authentication {
-      private val auth: AuthenticationScheme                      = authentication
+      private val auth: AuthenticationScheme = authentication
+
       override def getAuthentication(): UIO[AuthenticationScheme] =
         ZIO.succeed(auth)
-    })
+    }).toLayer
 
   sealed trait AuthenticationScheme
 

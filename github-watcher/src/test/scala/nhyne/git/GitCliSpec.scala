@@ -17,6 +17,9 @@ import java.nio.file.attribute.PosixFilePermissions
 object GitCliSpec {
 
   val test: ULayer[Has[GitCli]] = ZLayer.succeed(new GitCli {
+    override def setGitConfig(githubUser: GitEvents.GithubUser): ZIO[Blocking, CliError, ExitCode] =
+      ZIO.succeed(ExitCode.success)
+
     override def gitClone(
       repository: GitEvents.Repository,
       branch: GitEvents.Branch,

@@ -3,7 +3,7 @@ package nhyne.git
 import nhyne.Errors.KredikError
 import nhyne.git.Authentication
 import nhyne.git.Authentication.AuthenticationScheme
-import nhyne.git.GitEvents.{ GitRef, PullRequest, Repository }
+import nhyne.git.GitEvents.{ GitRef, GithubUser, PullRequest, Repository }
 import zio._
 import sttp.client3._
 import sttp.capabilities
@@ -45,7 +45,7 @@ trait GithubApi  {
 
   def validateAuth(
     credentials: AuthenticationScheme
-  ): ZIO[Has[SBackend], Throwable, Boolean]
+  ): ZIO[Has[SBackend], KredikError, GithubUser]
 }
 object GithubApi {
   type SBackend = SttpBackend[Task, ZioStreams with capabilities.WebSockets]
@@ -161,16 +161,20 @@ object GithubApi {
 
         override def validateAuth(
           credentials: AuthenticationScheme
-        ): ZIO[Has[SBackend], Throwable, Boolean] =
+        ): ZIO[Has[SBackend], KredikError, GithubUser] =
           for {
             client       <- ZIO.service[SBackend]
             noAuthRequest = basicRequest
                               .get(uri"https://api.github.com/user")
+                              .response(asJson[GithubUser])
             authRequest   = AuthenticationScheme.actionOnScheme(credentials)(
                               noAuthRequest.auth.basic
                             )(noAuthRequest.auth.bearer)
-            response     <- client.send(authRequest)
-          } yield response.code.isSuccess
+            response     <- client
+                              .send(authRequest)
+                              .flatMap(res => ZIO.fromEither(res.body))
+                              .mapError(KredikError.GeneralError(_))
+          } yield response
       }
     )
 

@@ -26,10 +26,35 @@ trait GitCli  {
     pullRequest: PullRequest,
     cloneDir: Path
   ): ZIO[Blocking, CliError, ExitCode]
+
+  def setGitConfig(githubUser: GithubUser): ZIO[Blocking, CliError, ExitCode]
 }
 object GitCli {
 
   val live = ZLayer.succeed(new GitCli {
+
+    override def setGitConfig(githubUser: GithubUser): ZIO[Blocking, CliError, ExitCode] =
+      for {
+        _ <- commandToKredikExitCode(
+               Command(
+                 "git",
+                 "config",
+                 "--global",
+                 "user.name",
+                 githubUser.login
+               )
+             )
+        _ <- commandToKredikExitCode(
+               Command(
+                 "git",
+                 "config",
+                 "--global",
+                 "user.email",
+                 githubUser.email.getOrElse(s"${githubUser.login}@localhost")
+               )
+             )
+      } yield ExitCode.success
+
     override def gitCloneDepth(
       repository: Repository,
       branch: Branch,

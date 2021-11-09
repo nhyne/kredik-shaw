@@ -101,6 +101,11 @@ object GitEvents {
     sha: String
   )
 
+  final case class GithubUser(
+    login: String,
+    email: Option[String]
+  )
+
   sealed trait ActionVerb
 
   object ActionVerb {
@@ -129,6 +134,7 @@ object GitEvents {
   implicit val gitRefDecoder: JsonDecoder[GitRef]             =
     DeriveJsonDecoder.gen[GitRef]
 
+  implicit val githubUserDecoder: JsonDecoder[GithubUser]                          = DeriveJsonDecoder.gen[GithubUser]
   implicit val issueDecoder: JsonDecoder[Issue]                                    = DeriveJsonDecoder.gen[Issue]
   implicit val ownerDecoder: JsonDecoder[Owner]                                    = DeriveJsonDecoder.gen[Owner]
   implicit val repositoryDecoder: JsonDecoder[Repository]                          =

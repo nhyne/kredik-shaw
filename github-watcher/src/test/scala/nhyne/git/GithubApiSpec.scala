@@ -2,7 +2,7 @@ package nhyne.git
 
 import nhyne.Errors.KredikError
 import nhyne.git.Authentication.AuthenticationScheme
-import nhyne.git.GitEvents.PullRequest
+import nhyne.git.GitEvents.{ GithubUser, PullRequest }
 import nhyne.git.GithubApi.{ CommentResponse, SBackend, Topics }
 import zio.{ system, Has, ZIO, ZLayer }
 
@@ -18,14 +18,14 @@ object GithubApiSpec {
 
       override def validateAuth(
         credentials: Authentication.AuthenticationScheme
-      ): ZIO[Has[SBackend], Throwable, Boolean] =
+      ): ZIO[Has[SBackend], KredikError, GithubUser] =
         credentials match {
-          case AuthenticationScheme.Bearer("valid")     => ZIO.succeed(true)
-          case AuthenticationScheme.Basic("valid", _)   => ZIO.succeed(true)
-          case AuthenticationScheme.Bearer("invalid")   => ZIO.succeed(false)
-          case AuthenticationScheme.Basic("invalid", _) => ZIO.succeed(false)
+          case AuthenticationScheme.Bearer("valid")     => ZIO.succeed(GithubUser("testUser", None))
+          case AuthenticationScheme.Basic("valid", _)   => ZIO.succeed(GithubUser("testUser", Some("email")))
+          case AuthenticationScheme.Bearer("invalid")   => ZIO.fail(KredikError.GeneralError("bad test credentials"))
+          case AuthenticationScheme.Basic("invalid", _) => ZIO.fail(KredikError.GeneralError("bad test credentials"))
           case _                                        =>
-            ZIO.fail(new Throwable("invalid option for mock validateAuth"))
+            ZIO.fail(KredikError.GeneralError("bad test credentials"))
         }
 
       override def getPullRequest(
