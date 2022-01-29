@@ -18,46 +18,38 @@ trait GithubApi  {
   def getTopics(
     org: String,
     repo: String
-  ): ZIO[Has[
-    SBackend
-  ] with System with Has[Authentication], Throwable, Topics]
+  ): ZIO[SBackend with System with Authentication, Throwable, Topics]
 
   def createComment(
     message: String,
     pullRequest: PullRequest
-  ): ZIO[Has[
-    SBackend
-  ] with System with Has[Authentication], KredikError, CommentResponse]
+  ): ZIO[SBackend with System with Authentication, KredikError, CommentResponse]
 
   def getPullRequest(
     repository: Repository,
     number: Int
-  ): ZIO[Has[SBackend] with System with Has[
-    Authentication
-  ], KredikError, PullRequest]
+  ): ZIO[SBackend with System with Authentication, KredikError, PullRequest]
 
   def getBranchSha(
     repository: Repository,
     branchName: String
-  ): ZIO[Has[
-    SBackend
-  ] with System with Has[Authentication], KredikError, String]
+  ): ZIO[SBackend with System with Authentication, KredikError, String]
 
   def validateAuth(
     credentials: AuthenticationScheme
-  ): ZIO[Has[SBackend], Throwable, Boolean]
+  ): ZIO[SBackend, Throwable, Boolean]
 }
 object GithubApi {
   type SBackend = SttpBackend[Task, ZioStreams with capabilities.WebSockets]
 
-  val live: ZLayer[Has[SBackend], Throwable, Has[GithubApi]] =
+  val live: ZLayer[SBackend, Throwable, GithubApi] =
     ZLayer.succeed(
       new GithubApi {
         override def getTopics(
           org: String,
           repo: String
         ): ZIO[
-          Has[SBackend] with Has[Authentication] with System,
+          SBackend with Authentication with System,
           Throwable,
           Topics
         ] =
@@ -83,7 +75,7 @@ object GithubApi {
           message: String,
           pullRequest: PullRequest
         ): ZIO[
-          Has[SBackend] with Has[Authentication] with System,
+          SBackend with Authentication with System,
           KredikError,
           CommentResponse
         ] =
@@ -109,7 +101,7 @@ object GithubApi {
           } yield response
 
         override def getPullRequest(repository: Repository, number: Int): ZIO[
-          Has[SBackend] with Has[Authentication] with System,
+          SBackend with Authentication with System,
           KredikError,
           PullRequest
         ] =
@@ -136,9 +128,7 @@ object GithubApi {
         override def getBranchSha(
           repository: Repository,
           branchName: String
-        ): ZIO[Has[
-          SBackend
-        ] with System with Has[Authentication], KredikError, String] =
+        ): ZIO[SBackend with System with Authentication, KredikError, String] =
           for {
             client     <- ZIO.service[SBackend]
             authScheme <- ZIO
@@ -161,7 +151,7 @@ object GithubApi {
 
         override def validateAuth(
           credentials: AuthenticationScheme
-        ): ZIO[Has[SBackend], Throwable, Boolean] =
+        ): ZIO[SBackend, Throwable, Boolean] =
           for {
             client       <- ZIO.service[SBackend]
             noAuthRequest = basicRequest

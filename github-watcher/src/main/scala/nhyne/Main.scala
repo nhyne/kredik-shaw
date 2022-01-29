@@ -4,7 +4,6 @@ import com.coralogix.zio.k8s.client.apps.v1.deployments.Deployments
 import zio._
 import zhttp.service.EventLoopGroup
 import zhttp.service.server.ServerChannelFactory
-import zio.magic._
 import com.coralogix.zio.k8s.client.config.asynchttpclient.k8sDefault
 import com.coralogix.zio.k8s.client.v1.namespaces.Namespaces
 import nhyne.dependencies.{ DependencyConverter, DependencyWalker }

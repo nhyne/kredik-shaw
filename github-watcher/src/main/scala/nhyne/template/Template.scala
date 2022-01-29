@@ -7,7 +7,7 @@ import zio.process._
 import zio._
 import zio.blocking.Blocking
 import zio.nio.channels.FileChannel
-import zio.nio.core.file.Path
+import zio.nio.file.Path
 import zio.nio.file.Files
 
 import java.nio.file.StandardOpenOption
@@ -26,7 +26,7 @@ trait Template  {
     namespace: K8sNamespace,
     environmentVars: Map[String, String],
     imageTag: ImageTag
-  ): ZIO[Blocking with Has[ApplicationConfig], KredikError, Path]
+  ): ZIO[Blocking with ApplicationConfig, KredikError, Path]
 
   def injectEnvVarsIntoDeployments(
     namespace: K8sNamespace,
@@ -70,7 +70,7 @@ object Template {
       stdOut         <- commandToKredikString(templateCommand.env(envVars))
     } yield stdOut
 
-  val live: ULayer[Has[Template]] =
+  val live: ULayer[Template] =
     ZLayer.succeed {
       new Template {
         override def templateManifests(
@@ -79,7 +79,7 @@ object Template {
           namespace: K8sNamespace,
           environmentVars: Map[String, String],
           imageTag: ImageTag
-        ): ZIO[Blocking with Has[ApplicationConfig], KredikError, Path] =
+        ): ZIO[Blocking with ApplicationConfig, KredikError, Path] =
           for {
             commentPrefix  <- ZIO.service[ApplicationConfig].map(_.commentPrefix)
             templateOutput <- template(repoFolder, repoConfig, environmentVars)

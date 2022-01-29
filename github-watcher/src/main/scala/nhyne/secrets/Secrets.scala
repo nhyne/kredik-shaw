@@ -1,7 +1,7 @@
 package nhyne.secrets
 
 import nhyne.git.GitEvents.Repository
-import zio.{ Has, URLayer, ZIO }
+import zio.{ URLayer, ZIO }
 import io.github.vigoo.zioaws.secretsmanager.{ SecretsManager => AwsSecretsManager }
 import io.github.vigoo.zioaws.secretsmanager.model.GetSecretValueRequest
 import nhyne.Errors.KredikError
@@ -16,7 +16,7 @@ trait Secrets {
 }
 
 object Secrets {
-  def live: URLayer[Has[ApplicationConfig], Has[Secrets]] =
+  def live: URLayer[ApplicationConfig, Secrets] =
     ZIO
       .service[ApplicationConfig]
       .map(_.webhookSecrets)

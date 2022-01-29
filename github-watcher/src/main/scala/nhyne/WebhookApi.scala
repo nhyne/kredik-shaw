@@ -36,17 +36,17 @@ object WebhookApi {
     with Namespaces
     with Deployments
     with Logging
-    with Has[Template]
-    with Has[DependencyConverter]
-    with Has[Metrics]
-    with Has[GitCli]
-    with Has[Kubernetes]
-    with Has[DependencyWalker]
-    with Has[GithubApi]
-    with Has[Authentication]
-    with Has[Secrets]
-    with Has[SBackend]
-    with Has[ApplicationConfig]
+    with Template
+    with DependencyConverter
+    with Metrics
+    with GitCli
+    with Kubernetes
+    with DependencyWalker
+    with GithubApi
+    with Authentication
+    with Secrets
+    with SBackend
+    with ApplicationConfig
     with SecretsManager
 
   private val apiRoot = Root / "api" / "webhook"
@@ -73,7 +73,7 @@ object WebhookApi {
       case Method.GET -> Root / "live"                                                     => ZIO.succeed(Response.text("OK"))
     }
 
-  def server(): ZIO[Has[ApplicationConfig], Nothing, Server[ServerEnv, HttpError]] =
+  def server(): ZIO[ApplicationConfig, Nothing, Server[ServerEnv, HttpError]] =
     ZIO.service[ApplicationConfig].map(_.port).flatMap { port =>
       ZIO.succeed(
         Server.port(port) ++ Server.app(apiServer) ++ Server.maxRequestSize(

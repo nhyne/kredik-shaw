@@ -1,7 +1,6 @@
 package nhyne
 import nhyne.Errors.KredikError
 import zio.{ ExitCode, ZIO }
-import zio.blocking.Blocking
 import zio.process.Command
 
 object CommandWrapper {

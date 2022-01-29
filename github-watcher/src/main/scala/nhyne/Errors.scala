@@ -57,7 +57,7 @@ object Errors {
     }
 
     case object InvalidSignature extends KredikError {
-      val toThrowable: Throwable = new Throwable("InvalidSignature")
+      override def toThrowable(): Throwable = new Throwable("InvalidSignature")
     }
 
   }

@@ -7,7 +7,7 @@ import com.coralogix.zio.k8s.model.core.v1.Namespace
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{ DeleteOptions, ObjectMeta, Status }
 import nhyne.git.GitEvents.{ Branch, DeployableGitState, PullRequest }
 import nhyne.prometheus.Metrics
-import zio.nio.core.file.Path
+import zio.nio.file.Path
 import zio.clock._
 import zio.{ ExitCode, Has, ZIO, ZLayer }
 import zio.blocking.Blocking
@@ -28,7 +28,7 @@ trait Kubernetes  {
   def createPRNamespace(
     pullRequest: DeployableGitState
   ): ZIO[
-    Namespaces with Has[Metrics] with Has[ApplicationConfig] with Logging with Clock,
+    Namespaces with Metrics with ApplicationConfig with Logging with Clock,
     KredikError,
     K8sNamespace
   ]
@@ -58,7 +58,7 @@ object Kubernetes {
     override def createPRNamespace(
       pullRequest: DeployableGitState
     ): ZIO[
-      Namespaces with Has[Metrics] with Has[ApplicationConfig] with Logging with Clock,
+      Namespaces with Metrics with ApplicationConfig with Logging with Clock,
       KredikError,
       K8sNamespace
     ] =

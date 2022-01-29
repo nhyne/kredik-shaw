@@ -3,9 +3,10 @@ package nhyne.dependencies
 import nhyne.git.GitCli
 import nhyne.template.{ Dependency, RepoConfig }
 import zio.config.read
-import zio.nio.core.file.Path
+import zio.nio.file.Path
 import zio.nio.file.Files
 import zio._
+import zio.logging._
 import zio.config.yaml.YamlConfigSource
 import nhyne.git.GitEvents.{ Branch, Repository }
 import zio.logging.{ log, Logging }
@@ -19,7 +20,7 @@ trait DependencyConverter {
     dependency: Dependency,
     workingDir: Path
   ): ZIO[
-    ZEnv with Has[GitCli] with Has[ApplicationConfig] with Logging,
+    ZEnv with GitCli with ApplicationConfig with Logging,
     KredikError,
     (RepoConfig, Path)
   ]
@@ -56,7 +57,7 @@ object DependencyConverter {
         dependency: Dependency,
         workingDir: Path
       ): ZIO[
-        ZEnv with Has[GitCli] with Has[ApplicationConfig] with Logging,
+        ZEnv with GitCli with ApplicationConfig with Logging,
         KredikError,
         (RepoConfig, Path)
       ] =

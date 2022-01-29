@@ -4,7 +4,7 @@ import nhyne.git.GitCli
 import nhyne.template.{ Dependency, RepoConfig }
 import nhyne.template.RepoConfig.ImageTag
 import zio.logging.Logging
-import zio.{ Has, Ref, ZEnv, ZIO, ZLayer }
+import zio.{ Ref, ZEnv, ZIO, ZLayer }
 import zio.nio.core.file.Path
 import nhyne.Errors.KredikError
 import nhyne.config.ApplicationConfig
@@ -17,11 +17,10 @@ trait DependencyWalker {
     startingRepoPath: Path,
     startingSha: String, // TODO: Make this something besides a string
     workingDir: Path
-  ): ZIO[ZEnv with Has[DependencyConverter] with Has[
-    ApplicationConfig
-  ] with Has[
-    GitCli
-  ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]]
+  ): ZIO[ZEnv with DependencyConverter with ApplicationConfig with GitCli with Logging, KredikError, Map[
+    RepoConfig,
+    (Path, ImageTag)
+  ]]
 }
 
 object DependencyWalker {
@@ -35,11 +34,11 @@ object DependencyWalker {
         startingRepoPath: Path,
         startingSha: String,
         workingDir: Path
-      ): ZIO[ZEnv with Has[DependencyConverter] with Has[
-        ApplicationConfig
-      ] with Has[
-        GitCli
-      ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]] =
+      ): ZIO[
+        ZEnv with DependencyConverter with ApplicationConfig with GitCli with Logging,
+        KredikError,
+        Map[RepoConfig, (Path, ImageTag)]
+      ] =
         walkDeps(
           workingDir,
           startingConfig.dependencies.getOrElse(Set.empty),
@@ -60,9 +59,7 @@ object DependencyWalker {
     seenDeps: Set[Dependency],
     configs: Map[RepoConfig, (Path, ImageTag)]
   ): ZIO[
-    ZEnv with Has[DependencyConverter] with Has[GitCli] with Has[
-      ApplicationConfig
-    ] with Logging,
+    ZEnv with DependencyConverter with GitCli with ApplicationConfig with Logging,
     KredikError,
     Map[
       RepoConfig,

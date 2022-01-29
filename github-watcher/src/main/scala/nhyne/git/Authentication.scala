@@ -16,9 +16,7 @@ object Authentication {
 
   final case class GitAuthenticationError(message: String)
 
-  val live: ZLayer[Has[SBackend] with System with Has[GithubApi], Object, Has[
-    Authentication
-  ]] =
+  val live: ZLayer[SBackend with System with GithubApi, Object, Authentication] =
     ZLayer.fromEffect(for {
       authentication <- readAuthVars()
       isValid        <- ZIO

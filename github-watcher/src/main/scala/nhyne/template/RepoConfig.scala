@@ -2,9 +2,11 @@ package nhyne.template
 
 import nhyne.template.Template.TemplateCommand
 import nhyne.template.RepoConfig.ImageTag
-import zio.config._
+import zio.config.*
 import zio.config.derivation.describe
-import zio.config.magnolia.DeriveConfigDescriptor
+import zio.config.magnolia._
+import zio.config.magnolia.descriptor
+import zio.config._, ConfigDescriptor._
 
 import scala.collection.immutable.Set
 import java.io.File
@@ -14,7 +16,7 @@ object RepoConfig {
   final case class ImageTag(value: String)
 
   val repoConfigDescriptor: ConfigDescriptor[RepoConfig] =
-    DeriveConfigDescriptor.descriptor[RepoConfig]
+    descriptor[RepoConfig]
 }
 
 @describe("this config is for a repo watcher")
