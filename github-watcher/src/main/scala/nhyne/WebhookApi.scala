@@ -328,7 +328,6 @@ object WebhookApi {
       k8sService        <- ZIO.service[Kubernetes]
       namespace         <- k8sService
                              .createPRNamespace(gitDeployable)
-                             .mapError(e => KredikError.K8sError(e))
       envVars            = Map(
                              s"${commentPrefix}_ENVIRONMENT" -> "TRUE",
                              s"${commentPrefix}_IMAGE_TAG"   -> gitDeployable.getSha,
