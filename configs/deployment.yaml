@@ -57,7 +57,11 @@ spec:
             secretKeyRef:
               key: token
               name: github-token
-        image: nhyne/github-watcher:0.0.15-SNAPSHOT
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: KREDIK_WEBHOOK_NHYNE_WATCHER_TEST
+          value: "secret"
+        image: nhyne/kredik-shaw:0.1.0-SNAPSHOT
         ports:
         - containerPort: 8090
           name: webserver

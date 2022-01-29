@@ -2,18 +2,23 @@ package nhyne.kubernetes
 
 import com.coralogix.zio.k8s.client.model.{ K8sNamespace, PropagationPolicy }
 import com.coralogix.zio.k8s.client.{ DeserializationFailure, K8sFailure, NotFound }
-import com.coralogix.zio.k8s.client.v1.namespaces.{ create, delete, get, Namespaces }
+import com.coralogix.zio.k8s.client.v1.namespaces.{ create, delete, get, replace, Namespaces }
 import com.coralogix.zio.k8s.model.core.v1.Namespace
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{ DeleteOptions, ObjectMeta, Status }
 import nhyne.git.GitEvents.{ Branch, DeployableGitState, PullRequest }
 import nhyne.prometheus.Metrics
 import zio.nio.core.file.Path
+import zio.clock._
 import zio.{ ExitCode, Has, ZIO, ZLayer }
 import zio.blocking.Blocking
 import zio.logging.{ log, Logging }
 import zio.process.Command
 import nhyne.Errors.KredikError
 import nhyne.CommandWrapper.commandToKredikExitCode
+import nhyne.config.ApplicationConfig
+
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 
 trait Kubernetes  {
   def applyFile(
@@ -23,8 +28,8 @@ trait Kubernetes  {
   def createPRNamespace(
     pullRequest: DeployableGitState
   ): ZIO[
-    Namespaces with Has[Metrics] with Logging,
-    K8sFailure,
+    Namespaces with Has[Metrics] with Has[ApplicationConfig] with Logging with Clock,
+    KredikError,
     K8sNamespace
   ]
   def deletePRNamespace(
@@ -53,31 +58,34 @@ object Kubernetes {
     override def createPRNamespace(
       pullRequest: DeployableGitState
     ): ZIO[
-      Namespaces with Has[Metrics] with Logging,
-      K8sFailure,
+      Namespaces with Has[Metrics] with Has[ApplicationConfig] with Logging with Clock,
+      KredikError,
       K8sNamespace
-    ] = {
-      val (nsName, prNamespace) = namespaceObject(pullRequest)
+    ] =
       for {
-        namespace <- get(nsName)
-                       .foldM(
-                         {
-                           case NotFound =>
-                             create(prNamespace) *> {
-                               ZIO
-                                 .service[Metrics]
-                                 .flatMap(_.namespaceCreated(pullRequest.getBaseFullName))
-                                 .catchAll { e =>
-                                   log.error(e.toString).unit
-                                 }
-                             }
-                           case e        => ZIO.fail(e)
-                         },
-                         success => ZIO.succeed(success)
-                       )
-                       .as(K8sNamespace(nsName))
+        commentPrefix        <- ZIO.service[ApplicationConfig].map(_.commentPrefix)
+        time                 <- currentDateTime.mapError(KredikError.GeneralError(_))
+        (nsName, prNamespace) = namespaceObject(pullRequest, commentPrefix, time)
+        namespace            <- get(nsName)
+                                  .foldM(
+                                    {
+                                      case NotFound =>
+                                        create(prNamespace) *> {
+                                          ZIO
+                                            .service[Metrics]
+                                            .flatMap(_.namespaceCreated(pullRequest.getBaseFullName))
+                                            .catchAll { e =>
+                                              log.error(e.toString).unit
+                                            }
+                                        }
+                                      case e        => ZIO.fail(e)
+                                    },
+                                    success => ZIO.succeed(success)
+                                  )
+                                  .mapBoth(KredikError.K8sError, _ => K8sNamespace(nsName))
+        _                    <- replace(nsName, prNamespace).mapError(KredikError.K8sError)
+
       } yield namespace
-    }
 
     // TODO: Have an error with deleting namespaces (Deserialization error)
     //  The actual namespace does get deleted but we're logging an error + returning 500
@@ -125,10 +133,22 @@ object Kubernetes {
     namespace.trim.take(63) // max length of namespace
   }
   private def namespaceObject(
-    gitState: DeployableGitState
+    gitState: DeployableGitState,
+    prefix: String,
+    updatedTimestamp: OffsetDateTime
   ): (String, Namespace) = {
-    val nsName = namespaceName(gitState)
-    (nsName, Namespace(metadata = ObjectMeta(name = Some(nsName))))
+    val formatter = DateTimeFormatter.ISO_DATE_TIME
+    val timestamp = formatter.format(updatedTimestamp).replace(':', '_') // K8s labels cannot have `:`s
+    val nsName    = namespaceName(gitState)
+    (
+      nsName,
+      Namespace(metadata =
+        ObjectMeta(
+          name = Some(nsName),
+          labels = Map(prefix -> "true", s"$prefix-last-updated" -> timestamp)
+        )
+      )
+    )
   }
 
 }
