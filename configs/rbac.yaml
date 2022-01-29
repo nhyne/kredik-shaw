@@ -9,8 +9,8 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kredik-shaw
-#  name: cluster-admin
+#  name: kredik-shaw
+  name: cluster-admin
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -23,7 +23,7 @@ kind: ClusterRole
 metadata:
   name: kredik-shaw
 rules:
-  - verbs: ["create", "update", "delete"]
+  - verbs: ["create", "update", "delete", "get"]
     resources: ["namespaces"]
     resourceNames: ["pr-*", "watcher-test-*"]
     apiGroups: [""]

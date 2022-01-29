@@ -2,7 +2,7 @@ package nhyne.kubernetes
 
 import com.coralogix.zio.k8s.client.model.{ K8sNamespace, PropagationPolicy }
 import com.coralogix.zio.k8s.client.{ DeserializationFailure, K8sFailure, NotFound }
-import com.coralogix.zio.k8s.client.v1.namespaces.{ create, delete, get, Namespaces }
+import com.coralogix.zio.k8s.client.v1.namespaces.{ create, delete, get, replace, Namespaces }
 import com.coralogix.zio.k8s.model.core.v1.Namespace
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.{ DeleteOptions, ObjectMeta, Status }
 import nhyne.git.GitEvents.{ Branch, DeployableGitState, PullRequest }
@@ -83,6 +83,8 @@ object Kubernetes {
                                     success => ZIO.succeed(success)
                                   )
                                   .mapBoth(KredikError.K8sError, _ => K8sNamespace(nsName))
+        _                    <- replace(nsName, prNamespace).mapError(KredikError.K8sError)
+
       } yield namespace
 
     // TODO: Have an error with deleting namespaces (Deserialization error)
