@@ -9,7 +9,7 @@ import io.github.vigoo.zioaws.secretsmanager.SecretsManager
 import nhyne.dependencies.DependencyConverter
 import nhyne.dependencies.DependencyWalker
 import nhyne.git.GitEvents.{ Branch, DeployableGitState, PullRequest, Repository, WebhookEvent }
-import template.{ RepoConfig, Template }
+import template.{ Deployables, Template }
 import zio.json._
 import zio.logging._
 import zio.config._
@@ -367,7 +367,7 @@ object WebhookApi {
                              )
                            )
       initialRepoConfig <- ZIO.fromEither(
-                             read(RepoConfig.repoConfigDescriptor.from(configSource))
+                             read(Deployables.deployablesDescriptor.from(configSource))
                            )
     } yield initialRepoConfig
 
