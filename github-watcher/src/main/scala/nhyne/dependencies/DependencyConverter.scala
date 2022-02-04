@@ -45,7 +45,6 @@ object DependencyConverter {
                             s"Could not read config file for dependency: $dependency"
                           )
                         )
-      _             = println(s"CONFIG SOURCE: ${configSource.names}")
       config       <- ZIO.fromEither(
                         read(Deployables.deployablesDescriptor.from(configSource))
                       )
@@ -79,7 +78,6 @@ object DependencyConverter {
                               repoDir
                             )
                           )
-          _           = println(s"============== folder: ${repoDir.toString()} repo: $repo, dependency: $dependency")
           config     <- readConfig(repoDir, dependency).mapError(KredikError.IOReadError)
         } yield (config, repoDir)
     }
