@@ -1,5 +1,6 @@
 package nhyne.git
 
+import nhyne.config.ApplicationConfig
 import nhyne.git.Authentication.AuthenticationScheme
 import zio._
 import zio.test._
@@ -8,6 +9,7 @@ import zio.test.environment.{ TestEnvironment, TestSystem }
 import zio.test.environment.TestSystem.Data
 import zio.magic._
 import sttp.client3.httpclient.zio.HttpClientZioBackend
+import zio.blocking.Blocking
 
 object AuthenticationSpec extends DefaultRunnableSpec {
   private val testBearerToken           = "valid"
@@ -25,6 +27,9 @@ object AuthenticationSpec extends DefaultRunnableSpec {
                            HttpClientZioBackend.layer(),
                            TestSystem.live(envData),
                            GithubApiSpec.test,
+                           Blocking.live,
+                           GitCliSpec.test,
+                           ApplicationConfig.test,
                            Authentication.live
                          )
         } yield assert(authValue)(
@@ -39,6 +44,9 @@ object AuthenticationSpec extends DefaultRunnableSpec {
                          .flatMap(auth => auth.getAuthentication())
                          .inject(
                            GithubApiSpec.test,
+                           GitCliSpec.test,
+                           Blocking.live,
+                           ApplicationConfig.test,
                            HttpClientZioBackend.layer(),
                            TestSystem.live(envData),
                            Authentication.live
