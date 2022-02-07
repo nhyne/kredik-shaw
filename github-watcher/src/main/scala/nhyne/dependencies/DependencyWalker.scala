@@ -1,7 +1,7 @@
 package nhyne.dependencies
 
 import nhyne.git.GitCli
-import nhyne.template.{ Dependency, RepoConfig }
+import nhyne.template.{ Dependency, Deployables }
 import nhyne.template.RepoConfig.ImageTag
 import zio.logging.Logging
 import zio.{ Has, Ref, ZEnv, ZIO, ZLayer }
@@ -13,7 +13,7 @@ import scala.collection.immutable.Set
 
 trait DependencyWalker {
   def walkDependencies(
-    startingConfig: RepoConfig,
+    startingConfig: Deployables,
     startingRepoPath: Path,
     startingSha: String, // TODO: Make this something besides a string
     workingDir: Path
@@ -21,7 +21,7 @@ trait DependencyWalker {
     ApplicationConfig
   ] with Has[
     GitCli
-  ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]]
+  ] with Logging, KredikError, Map[Deployables, (Path, ImageTag)]]
 }
 
 object DependencyWalker {
@@ -31,7 +31,7 @@ object DependencyWalker {
   val live = ZLayer.succeed(
     new DependencyWalker {
       override def walkDependencies(
-        startingConfig: RepoConfig,
+        startingConfig: Deployables,
         startingRepoPath: Path,
         startingSha: String,
         workingDir: Path
@@ -39,7 +39,7 @@ object DependencyWalker {
         ApplicationConfig
       ] with Has[
         GitCli
-      ] with Logging, KredikError, Map[RepoConfig, (Path, ImageTag)]] =
+      ] with Logging, KredikError, Map[Deployables, (Path, ImageTag)]] =
         walkDeps(
           workingDir,
           startingConfig.dependencies.getOrElse(Set.empty),
@@ -50,22 +50,19 @@ object DependencyWalker {
     }
   )
 
-  /*
-   * TODO: Make this parallel
-   * TODO: Make this tail recursive
-   */
+  // TODO: Make this parallel
   private def walkDeps(
     workingDir: Path,
     unseenDeps: Set[Dependency],
     seenDeps: Set[Dependency],
-    configs: Map[RepoConfig, (Path, ImageTag)]
+    configs: Map[Deployables, (Path, ImageTag)]
   ): ZIO[
     ZEnv with Has[DependencyConverter] with Has[GitCli] with Has[
       ApplicationConfig
     ] with Logging,
     KredikError,
     Map[
-      RepoConfig,
+      Deployables,
       (Path, ImageTag)
     ]
   ] =

@@ -6,7 +6,7 @@ import nhyne.template.Template.TemplateCommand
 import zio.test._
 import zio.test.Assertion.equalTo
 import nhyne.git.GitCliSpec
-import nhyne.template.{ Dependency, RepoConfig }
+import nhyne.template.{ Dependency, Deployables, RepoConfig }
 import zio.test.environment.TestEnvironment
 import zio._
 import zio.logging.Logging
@@ -21,23 +21,22 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
   def spec: ZSpec[TestEnvironment, Any] =
     suite("repo config")(
       testM("repo has no dependencies") {
-        val repoConfig = RepoConfig(new File("ccc"), TemplateCommand.Helm, None)
+        val deployable = Deployables(Set(RepoConfig(new File("ccc"), TemplateCommand.Helm)), None)
         Files
           .createTempDirectoryManaged(None, Seq.empty)
           .use { path =>
             assertM(
               ZIO
                 .service[DependencyWalker]
-                .flatMap(_.walkDependencies(repoConfig, path, "somesha", path))
+                .flatMap(_.walkDependencies(deployable, path, "somesha", path))
             )(
-              equalTo(Map(repoConfig -> ((path, ImageTag("somesha")))))
+              equalTo(Map(deployable -> ((path, ImageTag("somesha")))))
             )
           }
       },
       testM("repo has one dependency") {
-        val repoConfig = RepoConfig(
-          new File("abc"),
-          TemplateCommand.Helm,
+        val deployable = Deployables(
+          Set(RepoConfig(new File("abc"), TemplateCommand.Helm)),
           Some(Set(Dependency("somewhere.test", "", "", None)))
         )
         Files
@@ -47,15 +46,19 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
               ZIO
                 .service[DependencyWalker]
                 .flatMap(
-                  _.walkDependencies(repoConfig, path, "somesha", path)
+                  _.walkDependencies(deployable, path, "somesha", path)
                 )
             )(
               equalTo(
                 Map(
-                  repoConfig -> ((path, ImageTag("somesha"))),
-                  RepoConfig(
-                    new File("abc"),
-                    TemplateCommand.Helm,
+                  deployable -> ((path, ImageTag("somesha"))),
+                  Deployables(
+                    Set(
+                      RepoConfig(
+                        new File("abc"),
+                        TemplateCommand.Helm
+                      )
+                    ),
                     None
                   )          -> ((Path("abc"), ImageTag("latest")))
                 )
@@ -64,9 +67,8 @@ object DependencyWalkerSpec extends DefaultRunnableSpec {
           }
       },
       testM("circular dependency terminates") {
-        val repoConfig = RepoConfig(
-          new File("itsacircle"),
-          TemplateCommand.Kustomize,
+        val repoConfig = Deployables(
+          Set(RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize)),
           Some(
             Set(
               Dependency(

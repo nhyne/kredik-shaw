@@ -2,9 +2,9 @@ package nhyne.template
 
 import nhyne.template.Template.TemplateCommand
 import nhyne.template.RepoConfig.ImageTag
-import zio.config._
+import zio.config.ConfigDescriptor
 import zio.config.derivation.describe
-import zio.config.magnolia.DeriveConfigDescriptor
+import zio.config.magnolia.DeriveConfigDescriptor.descriptor
 
 import scala.collection.immutable.Set
 import java.io.File
@@ -12,19 +12,20 @@ import java.io.File
 object RepoConfig {
 
   final case class ImageTag(value: String)
-
-  val repoConfigDescriptor: ConfigDescriptor[RepoConfig] =
-    DeriveConfigDescriptor.descriptor[RepoConfig]
 }
+
+object Deployables {
+
+  val deployablesDescriptor: ConfigDescriptor[Deployables] =
+    descriptor[Deployables]
+}
+
+final case class Deployables(deployables: Set[RepoConfig], dependencies: Option[Set[Dependency]])
 
 @describe("this config is for a repo watcher")
 final case class RepoConfig(
   resourceFolder: File,
-  templateCommand: TemplateCommand,
-  // TODO: Issue here with implicits and this param
-  // Believe it has to do with nested configs??
-  // TODO: This should really be a thunk
-  dependencies: Option[Set[Dependency]]
+  templateCommand: TemplateCommand
 )
 
 // TODO: Would be nice if this used refinement types to perform some validations
@@ -36,7 +37,7 @@ final case class Dependency(
   name: String,
   branch: String,
   imageTag: Option[ImageTag]
-) {
+) { self =>
   def repoUrl(): String =
     s"https://github.com/$owner/$name"
 }

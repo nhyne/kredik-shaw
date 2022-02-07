@@ -21,7 +21,7 @@ import nhyne.config.ApplicationConfig
 
 trait Template  {
   def templateManifests(
-    repoConfig: RepoConfig,
+    repoDeployables: Deployables,
     repoFolder: Path,
     namespace: K8sNamespace,
     environmentVars: Map[String, String],
@@ -74,32 +74,35 @@ object Template {
     ZLayer.succeed {
       new Template {
         override def templateManifests(
-          repoConfig: RepoConfig,
+          repoDeployables: Deployables,
           repoFolder: Path,
           namespace: K8sNamespace,
           environmentVars: Map[String, String],
           imageTag: ImageTag
         ): ZIO[Blocking with Has[ApplicationConfig], KredikError, Path] =
           for {
-            commentPrefix  <- ZIO.service[ApplicationConfig].map(_.commentPrefix)
-            templateOutput <- template(repoFolder, repoConfig, environmentVars)
-                                .map(substituteNamespace(_, commentPrefix, namespace))
-            tempFilePath   <- Files
-                                .createTempFile(
-                                  prefix = Some("templatedOutput"),
-                                  fileAttributes = Seq(
-                                    PosixFilePermissions.asFileAttribute(
-                                      PosixFilePermissions.fromString("rw-rw-rw-")
+            commentPrefix    <- ZIO.service[ApplicationConfig].map(_.commentPrefix)
+            templatedOutputs <- ZIO.foreachPar(repoDeployables.deployables) { repoConfig =>
+                                  template(repoFolder, repoConfig, environmentVars).map(
+                                    substituteNamespace(_, commentPrefix, namespace)
+                                  )
+                                }
+            tempFilePath     <- Files
+                                  .createTempFile(
+                                    prefix = Some("templatedOutput"),
+                                    fileAttributes = Seq(
+                                      PosixFilePermissions.asFileAttribute(
+                                        PosixFilePermissions.fromString("rw-rw-rw-")
+                                      )
                                     )
                                   )
-                                )
-                                .mapError(e => KredikError.GeneralError(e.getCause))
-            _              <- FileChannel
-                                .open(tempFilePath, StandardOpenOption.WRITE)
-                                .use { channel =>
-                                  channel.writeChunk(Chunk.fromArray(templateOutput.getBytes))
-                                }
-                                .mapError(e => KredikError.GeneralError(e))
+                                  .mapError(e => KredikError.GeneralError(e.getCause))
+            _                <- FileChannel
+                                  .open(tempFilePath, StandardOpenOption.WRITE)
+                                  .use { channel =>
+                                    channel.writeChunk(Chunk.fromArray(templatedOutputs.mkString("\n---\n").getBytes))
+                                  }
+                                  .mapError(e => KredikError.GeneralError(e))
           } yield tempFilePath
         override def injectEnvVarsIntoDeployments(
           namespace: K8sNamespace,

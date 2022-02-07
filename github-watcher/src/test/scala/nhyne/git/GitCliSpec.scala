@@ -62,8 +62,9 @@ object GitCliSpec {
                           channel
                             .writeChunk(Chunk.fromArray("""
                                                    |---
-                                                   |resourceFolder: .watcher
-                                                   |templateCommand: Kustomize
+                                                   |deployables:
+                                                   |  - resourceFolder: .watcher
+                                                   |    templateCommand: Kustomize
                                                    |dependencies:
                                                    |  - owner: nhyne
                                                    |    name: watcher-test-dependency

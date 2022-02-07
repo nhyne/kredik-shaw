@@ -1,7 +1,7 @@
 package nhyne.dependencies
 
 import nhyne.git.GitCli
-import nhyne.template.{ Dependency, RepoConfig }
+import nhyne.template.{ Dependency, Deployables }
 import zio.config.read
 import zio.nio.core.file.Path
 import zio.nio.file.Files
@@ -21,7 +21,7 @@ trait DependencyConverter {
   ): ZIO[
     ZEnv with Has[GitCli] with Has[ApplicationConfig] with Logging,
     KredikError,
-    (RepoConfig, Path)
+    (Deployables, Path)
   ]
 }
 
@@ -46,7 +46,7 @@ object DependencyConverter {
                           )
                         )
       config       <- ZIO.fromEither(
-                        read(RepoConfig.repoConfigDescriptor.from(configSource))
+                        read(Deployables.deployablesDescriptor.from(configSource))
                       )
     } yield config
 
@@ -58,7 +58,7 @@ object DependencyConverter {
       ): ZIO[
         ZEnv with Has[GitCli] with Has[ApplicationConfig] with Logging,
         KredikError,
-        (RepoConfig, Path)
+        (Deployables, Path)
       ] =
         for {
           folderName <- random.nextUUID

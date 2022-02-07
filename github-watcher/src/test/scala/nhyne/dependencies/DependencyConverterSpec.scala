@@ -3,7 +3,7 @@ package nhyne.dependencies
 import nhyne.Errors.KredikError
 import nhyne.config.ApplicationConfig
 import nhyne.git.GitCliSpec
-import nhyne.template.{ Dependency, RepoConfig }
+import nhyne.template.{ Dependency, Deployables, RepoConfig }
 import nhyne.template.RepoConfig.ImageTag
 import nhyne.template.Template.TemplateCommand
 import zio.{ Has, ULayer, ZIO, ZLayer }
@@ -37,9 +37,8 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
               } yield stuff._1
             )(
               equalTo(
-                RepoConfig(
-                  new File(".watcher"),
-                  TemplateCommand.Kustomize,
+                Deployables(
+                  Set(RepoConfig(new File(".watcher"), TemplateCommand.Kustomize)),
                   Some(
                     Set(
                       Dependency(
@@ -65,22 +64,17 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
     )
 
   object MockDependencyConverter {
-    private val testMap: Map[String, (RepoConfig, Path)] = Map(
+    private val testMap: Map[String, (Deployables, Path)] = Map(
       "somewhere.test" -> (
         (
-          RepoConfig(
-            new File("abc"),
-            TemplateCommand.Helm,
-            None
-          ),
+          Deployables(Set(RepoConfig(new File("abc"), TemplateCommand.Helm)), None),
           Path("abc")
         )
       ),
       "circular"       -> (
         (
-          RepoConfig(
-            new File("itsacircle"),
-            TemplateCommand.Kustomize,
+          Deployables(
+            Set(RepoConfig(new File("itsacircle"), TemplateCommand.Kustomize)),
             Some(
               Set(
                 Dependency(
@@ -104,7 +98,7 @@ object DependencyConverterSpec extends DefaultRunnableSpec {
           workingDir: Path
         ): ZIO[Blocking with Random with Has[
           ApplicationConfig
-        ], KredikError, (RepoConfig, Path)] =
+        ], KredikError, (Deployables, Path)] =
           ZIO
             .fromOption(testMap.get(dependency.owner))
             .orElseFail {
