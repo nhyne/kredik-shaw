@@ -12,10 +12,6 @@ import java.io.File
 object RepoConfig {
 
   final case class ImageTag(value: String)
-//  implicit val imageTagConfig: ConfigDescriptor[ImageTag] = descriptor[ImageTag]
-//
-//  implicit val repoConfigDescriptor: ConfigDescriptor[RepoConfig] =
-//    descriptor[RepoConfig]
 }
 
 object Deployables {
@@ -31,11 +27,6 @@ final case class RepoConfig(
   resourceFolder: File,
   templateCommand: TemplateCommand
 )
-
-object Dependency {
-//  implicit val dependencyDescriptor: ConfigDescriptor[Dependency] =
-//    descriptor[Dependency]
-}
 
 // TODO: Would be nice if this used refinement types to perform some validations
 //    https://zio.github.io/zio-config/docs/refined/refined_index
